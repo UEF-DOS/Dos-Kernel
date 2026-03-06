@@ -1,40 +1,21 @@
-# Limine C Template
+# UEF-DOS
 
-This repository will demonstrate how to set up a basic x86-64 kernel in C using Limine.
+## Why?
+### Uses 64 bits and not 16
+#### The original MS-DOS uses 16 bits it ran on cpus such as the Intel 8086 and 8088, but todays standards are higher which means MS-DOS is obsolete but you should know this already unless your living under a rock.
+### My intentions
+#### Theres something about MS-DOS and PC-DOS that I admire very much which is just using the keyboard and typing in commands. Now don't get me wrong using the mouse is great aswell which it will be needed for some games
+#### on DOS so there will be mouse support sadly since the originals games aren't built for 64 bit we will have to find ported version or port our own whicch will be time consuming and probably hard.
 
-It is recommended to cross reference the contents of this repository with [the Limine Bare Bones](https://osdev.wiki/wiki/Limine_Bare_Bones) OSDev wiki page.
-
-## How to use this?
-
-### Dependencies
-
-Any `make` command depends on GNU make (`gmake`) and is expected to be run using it. This usually means using `make` on most GNU/Linux distros, or `gmake` on other non-GNU systems.
-
-All `make all*` targets depend on a GNU-compatible C toolchain capable of generating x86-64 ELF objects. Usually `gcc/binutils` or `clang/llvm/lld` provided by any x86-64 UNIX like (including Linux) distribution will suffice.
-
-Additionally, building an ISO with `make all` requires `xorriso`, and building a HDD/USB image with `make all-hdd` requires `sgdisk` (usually from `gdisk` or `gptfdisk` packages) and `mtools`.
-
-### Toolchain selection
-
-The `TOOLCHAIN` and `TOOLCHAIN_PREFIX` `make` variables can be used to set the toolchain. `TOOLCHAIN` can be set to `llvm` to use Clang/LLVM.
-
-For example:
+## Building
+### How to build the project
+#### Since this uses limine it comes with a makefile all you have to do is type:
+```sh 
+make
 ```
-make TOOLCHAIN=llvm
+#### Into the command line and your done the project will compile!
+#### If you would like to run it right after you can do:
+```sh 
+make run
 ```
-or:
-```
-make TOOLCHAIN_PREFIX=x86_64-elf-
-```
-
-### Makefile targets
-
-Running `make all` will compile the kernel (from the `kernel/` directory) and then generate a bootable ISO image.
-
-Running `make all-hdd` will compile the kernel and then generate a raw image suitable to be flashed onto a USB stick or hard drive/SSD.
-
-Running `make run` will build the kernel and a bootable ISO (equivalent to make all) and then run it using `qemu` (if installed).
-
-Running `make run-hdd` will build the kernel and a raw HDD image (equivalent to make all-hdd) and then run it using `qemu` (if installed).
-
-The `run-uefi` and `run-hdd-uefi` targets are equivalent to their non `-uefi` counterparts except that they boot `qemu` using a UEFI-compatible firmware.
+#### Which will then build and run it for you!
