@@ -41,8 +41,6 @@ static uint64_t *heap_pml4 = NULL;
 // Kernel heap pages are mapped with Present | RW; no user access
 #define HEAP_PAGE_FLAGS 0x3
 
-#define DEBUG
-
 #ifdef DEBUG
 #define HEAP_LOG(msg)      serial_print(msg)
 #define HEAP_LOG_HEX(val)  serial_print_hex(val)

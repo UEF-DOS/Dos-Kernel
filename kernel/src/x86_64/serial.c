@@ -1,5 +1,5 @@
-#include <x86_64/serial.h>
 #include <x86_64/commands.h>
+#include <x86_64/serial.h>
 
 void serial_init() {
     outb(COM1_PORT + UART_INTR_EN, 0x00);

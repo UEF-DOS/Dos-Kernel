@@ -8,8 +8,6 @@
 
 #define TABLE_FLAGS 0x3
 
-#define DEBUG
-
 #ifdef DEBUG
 #define VMM_LOG(msg) serial_print(msg)
 #define VMM_LOG_HEX(val) serial_print_hex(val)

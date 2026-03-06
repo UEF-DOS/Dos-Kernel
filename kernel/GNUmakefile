@@ -39,6 +39,17 @@ CFLAGS := -g -O2 -pipe
 # User controllable C preprocessor flags. We set none by default.
 CPPFLAGS :=
 
+-include config.mk
+
+# Translate config.mk options into preprocessor symbols.
+ifeq ($(CONFIG_DEBUG),y)
+    CPPFLAGS += -DDEBUG
+endif
+
+ifeq ($(CONFIG_APIC_TIMER),y)
+    CPPFLAGS += -DAPIC_TIMER_ENABLED
+    CPPFLAGS += -DAPIC_TIMER_FREQUENCY=$(CONFIG_APIC_TIMER_FREQUENCY)
+endif
 # User controllable nasm flags.
 NASMFLAGS := -g
 

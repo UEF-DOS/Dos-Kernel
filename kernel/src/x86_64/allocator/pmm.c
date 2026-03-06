@@ -10,8 +10,6 @@
 #define FRAME_FREE(w, b)    ((w) &= ~(1ULL << (b)))
 #define FRAME_IS_FREE(w, b) (!((w) >> (b) & 1ULL))
 
-#define DEBUG
-
 #ifdef DEBUG
 #define PMM_LOG(msg)     serial_print(msg)
 #define PMM_LOG_HEX(val) serial_print_hex(val)

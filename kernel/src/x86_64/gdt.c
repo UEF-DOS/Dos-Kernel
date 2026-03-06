@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <x86_64/gdt.h>
 
 struct gdt_entry {
     uint16_t limit_low;

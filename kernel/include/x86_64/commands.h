@@ -31,4 +31,32 @@ static inline uint16_t inw(uint16_t port) {
     return result;
 }
 
+static inline void write_msr(uint32_t msr, uint64_t value) {
+    uint32_t edx = (value >> 32) & 0xffffffff;
+    uint32_t eax = value & 0xffffffff;
+    __asm__ volatile (
+        "wrmsr"
+        :
+        : "c" (msr), "a" (eax), "d" (edx)
+    );
+}
+
+static inline void read_msr(uint32_t msr, uint32_t *eax, uint32_t *edx) {
+    __asm__ volatile (
+        "rdmsr"
+        : "=a" (*eax), "=d" (*edx)
+        : "c" (msr)
+    );
+}
+
+
+static inline void cpuid(uint32_t leaf, uint32_t *eax, uint32_t *edx) {
+    __asm__ volatile (
+        "cpuid"
+        : "=a" (*eax), "=d" (*edx)
+        : "a" (leaf)
+        : "ebx", "ecx"
+    );
+}
+
 #endif

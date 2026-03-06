@@ -8,6 +8,7 @@
 #include <x86_64/allocator/pmm.h>
 #include <x86_64/allocator/vmm.h>
 #include <x86_64/allocator/heap.h>
+#include <x86_64/apic.h>
 
 // Set the base revision to 5, this is recommended as this is the latest
 // base revision described by the Limine boot protocol specification.
@@ -94,6 +95,18 @@ void kmain(void) {
     vmm_init();
     serial_print("Initializing HEAP\n");
     heap_init();
+
+    serial_print("Enabling APIC\n");
+    uintptr_t apic_base = cpu_get_apic_base();
+    cpu_set_apic_base(apic_base);
+    apic_map();
+    enable_apic();
+
+#ifdef APIC_TIMER_ENABLED
+    // Calibrate the APIC timer using the configured frequency (defaults to 100Hz).
+    apic_calibrate_timer(APIC_TIMER_FREQUENCY);
+#endif
+
     serial_print("DONE\n");
 
     // Note: we assume the framebuffer model is RGB with 32-bit pixels.

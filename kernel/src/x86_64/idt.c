@@ -1,5 +1,11 @@
 #include <stdint.h>
 #include <stdbool.h>
+#include <x86_64/commands.h>
+#include <x86_64/apic.h>
+#include <x86_64/serial.h>
+#include <x86_64/idt.h>
+
+#define APIC_TIMER_VECTOR 0x20
 
 typedef struct {
 	uint16_t    isr_low;      // The lower 16 bits of the ISR's address
@@ -21,9 +27,12 @@ static idt_entry_t idt[256];
 
 static idtr_t idtr;
 
-static bool vectors[255];
+static bool vectors[256];
 
 extern void* isr_stub_table[];
+
+__attribute__((noreturn)) void exception_handler(uint8_t exception);
+void isr_handler(uint8_t vector);
 
 void idt_set_descriptor(uint8_t vector, void* isr, uint8_t flags) {
     idt_entry_t* descriptor = &idt[vector];
@@ -46,8 +55,30 @@ void idt_init() {
         vectors[vector] = true;
     }
 
+    // Add a handler for the APIC timer (vector 0x20)
+    idt_set_descriptor(APIC_TIMER_VECTOR, isr_stub_table[APIC_TIMER_VECTOR], 0x8E);
+    vectors[APIC_TIMER_VECTOR] = true;
+
+    // Mask the legacy PIC so we don't receive IRQs from it
+    outb(0xA1, 0xFF); // slave
+    outb(0x21, 0xFF); // master
+
     __asm__ volatile ("lidt %0" : : "m"(idtr)); // load the new IDT
     __asm__ volatile ("sti"); // set the interrupt flag
+}
+
+void isr_handler(uint8_t vector) {
+    switch (vector) {
+        case APIC_TIMER_VECTOR:
+            #ifdef DEBUG
+            serial_print(".");
+            #endif
+            apic_eoi();
+            break;
+        default:
+            exception_handler(vector);
+            break;
+    }
 }
 
 __attribute__((noreturn))
