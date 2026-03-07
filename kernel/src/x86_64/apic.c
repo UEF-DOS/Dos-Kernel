@@ -58,8 +58,8 @@ void apic_map(void) {
     __asm__ volatile ("mov %%cr3, %0" : "=r"(cr3));
     uint64_t *pml4 = (uint64_t *)phys_to_virt(cr3);
 
-    uint64_t virt = phys_to_virt(phys);
-    vmm_map_range(pml4, virt, phys, 0x1000, 0x3);
+    void *virt = phys_to_virt((uint64_t)phys);
+    vmm_map_range(pml4, (uint64_t)virt, (void *)phys, 0x1000, 0x3);
 }
 
 void apic_eoi() {

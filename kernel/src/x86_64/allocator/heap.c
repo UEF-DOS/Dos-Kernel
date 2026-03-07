@@ -102,7 +102,7 @@ static struct linked_list_node *expand_heap(size_t size) {
     HEAP_LOG(" frames=");           HEAP_LOG_NUM(frames_needed);
     HEAP_LOG("\n");
 
-    uint64_t phys = frame_alloc();
+    void *phys = frame_alloc(1);
     if (!phys) {
         serial_print("expand_heap: frame_alloc failed\n");
         return NULL;
@@ -113,7 +113,7 @@ static struct linked_list_node *expand_heap(size_t size) {
     heap_virt_cursor += 4096;
     map_page(heap_pml4, virt, phys, HEAP_PAGE_FLAGS);
 
-    HEAP_LOG("expand_heap: mapped phys="); HEAP_LOG_HEX(phys);
+    HEAP_LOG("expand_heap: mapped phys="); HEAP_LOG_HEX((uint64_t)phys);
     HEAP_LOG(" virt=");                    HEAP_LOG_HEX(virt);
     HEAP_LOG("\n");
 
@@ -125,7 +125,7 @@ static struct linked_list_node *expand_heap(size_t size) {
 
     // Each additional frame needed gets its own mapped node
     for (size_t i = 1; i < frames_needed; i++) {
-        uint64_t phys2 = frame_alloc();
+        void *phys2 = frame_alloc(1);
         if (!phys2) {
             serial_print("expand_heap: frame_alloc failed on frame ");
             serial_print_num(i);
@@ -137,7 +137,7 @@ static struct linked_list_node *expand_heap(size_t size) {
         heap_virt_cursor += 4096;
         map_page(heap_pml4, virt2, phys2, HEAP_PAGE_FLAGS);
 
-        HEAP_LOG("expand_heap: mapped extra phys="); HEAP_LOG_HEX(phys2);
+        HEAP_LOG("expand_heap: mapped extra phys="); HEAP_LOG_HEX((uint64_t)phys2);
         HEAP_LOG(" virt=");                          HEAP_LOG_HEX(virt2);
         HEAP_LOG("\n");
 
@@ -287,6 +287,5 @@ void kfree(void *ptr) {
         HEAP_LOG("kfree: coalesced with next, new size="); HEAP_LOG_NUM(node->size); HEAP_LOG("\n");
     }
 
-    // Re-insert the (possibly enlarged) node into the correct bucket
     free_list_insert(node);
 }

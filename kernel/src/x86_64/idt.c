@@ -83,6 +83,7 @@ void isr_handler(uint8_t vector) {
 
 __attribute__((noreturn))
 void exception_handler(uint8_t exception) {
+    serial_print("Exception\n");
     switch (exception) {
     
     }
