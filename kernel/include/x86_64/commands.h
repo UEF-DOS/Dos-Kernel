@@ -23,6 +23,28 @@ static inline void outw(uint16_t port, uint16_t val) {
     );
 }
 
+static inline void outsl(uint16_t port, const void *addr, uint32_t count) {
+    __asm__ volatile (
+        "rep outsl"
+        : "+S" (addr), "+c" (count)
+        : "d" (port)
+        : "memory"
+    );
+}
+
+static inline void insl(uint16_t port, void *addr, uint32_t count) {
+    __asm__ volatile (
+        "rep insl"
+        : "+D" (addr), "+c" (count)
+        : "d" (port)
+        : "memory"
+    );
+}
+
+static inline void io_wait(void) {
+    outb(0x80, 0);
+}
+
 static inline uint16_t inw(uint16_t port) {
     uint16_t result;
     __asm__ volatile (

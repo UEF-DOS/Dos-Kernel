@@ -70,9 +70,9 @@ void idt_init() {
 void isr_handler(uint8_t vector) {
     switch (vector) {
         case APIC_TIMER_VECTOR:
-            #ifdef DEBUG
+        #ifdef DEBUG
             serial_print(".");
-            #endif
+        #endif
             apic_eoi();
             break;
         default:

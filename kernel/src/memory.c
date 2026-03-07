@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <stddef.h>
+#include <stdbool.h>
 #include <memory.h>
 
 // GCC and Clang reserve the right to generate calls to the following
@@ -56,4 +57,42 @@ int memcmp(const void *s1, const void *s2, size_t n) {
     }
 
     return 0;
+}
+
+size_t strlen(const char *s) {
+    size_t len = 0;
+    while (s[len] != '\0') {
+        len++;
+    }
+    return len;
+}
+
+bool strcmp(const char *s1, const char *s2) {
+    while (*s1 && *s2) {
+        if (*s1 != *s2) {
+            return false;
+        }
+        s1++;
+        s2++;
+    }
+    return *s1 == '\0' && *s2 == '\0';
+}
+
+int strncmp(const char *a, const char *b, size_t n) {
+    while (n && *a && *b) {
+        if (*a != *b) return (uint8_t)*a - (uint8_t)*b;
+        a++;
+        b++;
+        n--;
+    }
+    if (n == 0) return 0;
+    return (uint8_t)*a - (uint8_t)*b;
+}
+
+const char *strchr(const char *s, int c) {
+    while (*s) {
+        if (*s == (char)c) return s;
+        s++;
+    }
+    return NULL;
 }

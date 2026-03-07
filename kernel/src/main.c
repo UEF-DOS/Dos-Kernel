@@ -9,6 +9,9 @@
 #include <x86_64/allocator/vmm.h>
 #include <x86_64/allocator/heap.h>
 #include <x86_64/apic.h>
+#include <x86_64/drivers/block/ide.h>
+#include <x86_64/drivers/fs/fat12.h>
+#include <x86_64/drivers/fs/vfs.h>
 
 // Set the base revision to 5, this is recommended as this is the latest
 // base revision described by the Limine boot protocol specification.
@@ -106,6 +109,34 @@ void kmain(void) {
     // Calibrate the APIC timer using the configured frequency (defaults to 100Hz).
     apic_calibrate_timer(APIC_TIMER_FREQUENCY);
 #endif
+
+    serial_print("Initializing IDE\n");
+    ide_initialize(0, 0, 0, 0, 0);
+    serial_print("Initializing FAT12\n");
+    fat12_init(0);
+
+    serial_print("Initializing VFS\n");
+    vfs_init();
+    if (vfs_write_file("/hello.txt", "Hello, world!", 13) == 0) {
+        serial_print("Failed to write file to VFS\n");
+    } else {
+        serial_print("Write OK\n");
+    }
+    vfs_node_t *node = vfs_open("/hello.txt");
+    if (node) {
+        uint32_t size;
+        char *data = vfs_read_file(node, &size);
+        if (data) {
+            serial_print("Read from VFS: ");
+            serial_print(data);
+            serial_print("\n");
+        } else {
+            serial_print("Failed to read file from VFS\n");
+        } 
+        vfs_close(node);
+    } else {
+        serial_print("Failed to open file from VFS\n");
+    }
 
     serial_print("DONE\n");
 

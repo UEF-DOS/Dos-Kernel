@@ -15,3 +15,10 @@ CONFIG_APIC_TIMER ?= y
 
 # Set the desired frequency for the APIC in Hz
 CONFIG_APIC_TIMER_FREQUENCY ?= 100
+
+# Driver options
+CONFIG_IDE_DRIVER ?= y
+
+# Please for the love of god choose one and don't set them both to 'y'
+CONFIG_SINGLE_TASKING ?= y
+CONFIG_MULTITASKING ?= n

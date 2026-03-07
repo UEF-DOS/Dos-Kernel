@@ -46,10 +46,25 @@ ifeq ($(CONFIG_DEBUG),y)
     CPPFLAGS += -DDEBUG
 endif
 
+# Interrupts
 ifeq ($(CONFIG_APIC_TIMER),y)
     CPPFLAGS += -DAPIC_TIMER_ENABLED
     CPPFLAGS += -DAPIC_TIMER_FREQUENCY=$(CONFIG_APIC_TIMER_FREQUENCY)
 endif
+
+# Drivers
+ifeq ($(CONFIG_IDE_DRIVER),y)
+    CPPFLAGS += -DIDE_DRIVER_ENABLED
+endif
+
+# Tasking model
+ifeq ($(CONFIG_SINGLE_TASKING),y)
+    CPPFLAGS += -DSINGLE_TASKING
+endif
+ifeq ($(CONFIG_MULTITASKING),y)
+    CPPFLAGS += -DMULTITASKING
+endif
+
 # User controllable nasm flags.
 NASMFLAGS := -g
 
