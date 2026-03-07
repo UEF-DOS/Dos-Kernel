@@ -107,18 +107,23 @@ void *frame_alloc(uint64_t n) {
     return NULL;
 }
 
-void frame_free(void *frame_addr) {
+void frame_free(void *frame_addr, uint64_t n) {
     uint64_t frame = (uint64_t)frame_addr / 4096;
 
-    if (frame >= total_frames) {
-        serial_print("frame_free: invalid frame ");
+    if (frame + n > total_frames) {
+        serial_print("frame_free: invalid range ");
         serial_print_hex((uint64_t)frame_addr);
         serial_print("\n");
         return;
     }
 
-    bit_map[frame] = UNUSED;
+    for (uint64_t i = 0; i < n; i++) {
+        bit_map[frame + i] = UNUSED;
+    }
+
     serial_print("frame_free: phys=");
     serial_print_hex((uint64_t)frame_addr);
+    serial_print(" n=");
+    serial_print_num(n);
     serial_print("\n");
 }

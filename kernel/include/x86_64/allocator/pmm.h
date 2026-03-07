@@ -6,6 +6,6 @@
 
 void frame_allocator_init(struct limine_memmap_response *memmap_response, uint64_t hhdm_offset);
 void *frame_alloc(uint64_t n);
-void frame_free(void *frame);
+void frame_free(void *frame_addr, uint64_t n);
 
 #endif

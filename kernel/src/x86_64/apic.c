@@ -51,15 +51,14 @@ uintptr_t cpu_get_apic_base() {
     #endif
 }
 
-void apic_map(void) {
+void apic_map() {
     uintptr_t phys = cpu_get_apic_base();
 
     uint64_t cr3;
     __asm__ volatile ("mov %%cr3, %0" : "=r"(cr3));
-    uint64_t *pml4 = (uint64_t *)phys_to_virt(cr3);
-
-    void *virt = phys_to_virt((uint64_t)phys);
-    vmm_map_range(pml4, (uint64_t)virt, (void *)phys, 0x1000, 0x3);
+    uint64_t *pml4 = (uint64_t *)(cr3 & ~0xFFFULL);
+    void *virt = (void *)phys_to_virt((uint64_t)phys);
+    vmm_map_range(pml4, (uint64_t)virt, (void *)phys, 0x1000, 0x13);
 }
 
 void apic_eoi() {
@@ -125,4 +124,19 @@ void enable_apic() {
 
     /* Set the Spurious Interrupt Vector Register bit 8 to start receiving interrupts */
     write_reg(0xF0, read_register(0xF0) | 0x100);
+}
+
+void sleep_timer_ticks(uint64_t ticks) {
+    write_reg(APIC_TIMER_DIV, 0x3);
+    write_reg(APIC_LVT_TIMER, APIC_TIMER_VECTOR);
+    write_reg(APIC_TIMER_INIT, ticks);
+
+    while (read_register(APIC_TIMER_CURRENT) != 0) {
+        __asm__ volatile ("pause");
+    }
+}
+
+void sleep_timer_ms(uint64_t ms) {
+    uint32_t ticks = (ms * PIT_FREQ) / 1000;
+    sleep_timer_ticks(ticks);
 }

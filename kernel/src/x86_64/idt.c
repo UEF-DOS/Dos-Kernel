@@ -83,10 +83,32 @@ void isr_handler(uint8_t vector) {
 
 __attribute__((noreturn))
 void exception_handler(uint8_t exception) {
-    serial_print("Exception\n");
+    serial_print("\n=== EXCEPTION ===\n");
+    serial_print("Vector: ");
+    serial_print_num(exception);
+    serial_print("\n");
+
     switch (exception) {
-    
+        case 0:  serial_print("Divide Error\n"); break;
+        case 6:  serial_print("Invalid Opcode\n"); break;
+        case 13: serial_print("General Protection Fault\n"); break;
+        case 14: {
+            serial_print("Page Fault\n");
+            uint64_t cr2;
+            __asm__ volatile ("mov %%cr2, %0" : "=r"(cr2));
+            serial_print("  Faulting address (CR2): ");
+            serial_print_hex(cr2);
+            serial_print("\n");
+            break;
+        }
+        default: serial_print("Unknown Exception\n"); break;
     }
-    for (;;)
-        __asm__ volatile ("cli; hlt");
+
+    uint64_t rsp, cr3;
+    __asm__ volatile ("mov %%rsp, %0" : "=r"(rsp));
+    __asm__ volatile ("mov %%cr3, %0" : "=r"(cr3));
+    serial_print("  RSP: "); serial_print_hex(rsp); serial_print("\n");
+    serial_print("  CR3: "); serial_print_hex(cr3); serial_print("\n");
+
+    for (;;) __asm__ volatile ("cli; hlt");
 }

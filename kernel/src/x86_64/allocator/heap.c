@@ -91,9 +91,7 @@ static void all_nodes_append(struct linked_list_node *node) {
     all_nodes.last = node;
 }
 
-// Allocate one or more frames, map them into the heap VA region via the VMM,
-// and return a pointer to the first node carved from those frames.
-// Each frame gets its own node; adjacent free nodes are coalesced by kmalloc.
+// Allocate one or more frames, map them into the heap VA region via the VMM.
 static struct linked_list_node *expand_heap(size_t size) {
     size_t total         = size + sizeof(struct linked_list_node);
     size_t frames_needed = (total + 4095) / 4096;
@@ -102,53 +100,33 @@ static struct linked_list_node *expand_heap(size_t size) {
     HEAP_LOG(" frames=");           HEAP_LOG_NUM(frames_needed);
     HEAP_LOG("\n");
 
-    void *phys = frame_alloc(1);
-    if (!phys) {
-        serial_print("expand_heap: frame_alloc failed\n");
-        return NULL;
-    }
+    // Map all frames contiguously and make ONE node spanning all of them
+    uint64_t virt_start = heap_virt_cursor;
 
-    // Map the first frame into the next available heap VA slot
-    uint64_t virt = heap_virt_cursor;
-    heap_virt_cursor += 4096;
-    map_page(heap_pml4, virt, phys, HEAP_PAGE_FLAGS);
-
-    HEAP_LOG("expand_heap: mapped phys="); HEAP_LOG_HEX((uint64_t)phys);
-    HEAP_LOG(" virt=");                    HEAP_LOG_HEX(virt);
-    HEAP_LOG("\n");
-
-    struct linked_list_node *head = (struct linked_list_node *)virt;
-    head->size = 4096 - sizeof(struct linked_list_node);
-    head->used = false;
-    all_nodes_append(head);
-    free_list_insert(head);
-
-    // Each additional frame needed gets its own mapped node
-    for (size_t i = 1; i < frames_needed; i++) {
-        void *phys2 = frame_alloc(1);
-        if (!phys2) {
-            serial_print("expand_heap: frame_alloc failed on frame ");
-            serial_print_num(i);
-            serial_print("\n");
-            break;
+    for (size_t i = 0; i < frames_needed; i++) {
+        void *phys = frame_alloc(1);
+        if (!phys) {
+            serial_print("expand_heap: frame_alloc failed\n");
+            return NULL;
         }
 
-        uint64_t virt2 = heap_virt_cursor;
+        uint64_t virt = heap_virt_cursor;
         heap_virt_cursor += 4096;
-        map_page(heap_pml4, virt2, phys2, HEAP_PAGE_FLAGS);
+        map_page(heap_pml4, virt, phys, HEAP_PAGE_FLAGS);
 
-        HEAP_LOG("expand_heap: mapped extra phys="); HEAP_LOG_HEX((uint64_t)phys2);
-        HEAP_LOG(" virt=");                          HEAP_LOG_HEX(virt2);
+        HEAP_LOG("expand_heap: mapped phys="); HEAP_LOG_HEX((uint64_t)phys);
+        HEAP_LOG(" virt=");                    HEAP_LOG_HEX(virt);
         HEAP_LOG("\n");
-
-        struct linked_list_node *extra = (struct linked_list_node *)virt2;
-        extra->size = 4096 - sizeof(struct linked_list_node);
-        extra->used = false;
-        all_nodes_append(extra);
-        free_list_insert(extra);
     }
 
-    return head;
+    // Single node spanning all allocated frames
+    struct linked_list_node *node = (struct linked_list_node *)virt_start;
+    node->size = (frames_needed * 4096) - sizeof(struct linked_list_node);
+    node->used = false;
+    all_nodes_append(node);
+    free_list_insert(node);
+
+    return node;
 }
 
 // Initialize the kernel heap; capture the current PML4 and pre-fault one frame
@@ -156,12 +134,9 @@ void heap_init() {
     linked_list_init(&all_nodes);
     for (int i = 0; i < NUM_BUCKETS; i++) linked_list_init(&free_lists[i]);
 
-    // Grab the currently active PML4 from CR3 so all heap mappings go into
-    // the live address space; kernel slots are shared across all future PML4s
-    // via vmm_create_pml4 so this only needs to be done once
     uint64_t cr3;
     __asm__ volatile ("mov %%cr3, %0" : "=r"(cr3));
-    heap_pml4 = (uint64_t *)phys_to_virt(cr3);
+    heap_pml4 = (uint64_t *)(cr3 & ~0xFFFULL);
 
     HEAP_LOG("heap_init: pml4="); HEAP_LOG_HEX((uint64_t)heap_pml4); HEAP_LOG("\n");
 
@@ -174,23 +149,15 @@ void heap_init() {
 void *kmalloc(size_t size) {
     if (size == 0) return NULL;
 
-    // Align to 8 bytes for both performance and ABI correctness
     const size_t alignment = 8;
     size = (size + (alignment - 1)) & ~(alignment - 1);
 
-    // Search only the buckets that can satisfy this size; start at the
-    // exact-fit bucket and work up to avoid scanning obviously-too-small nodes
     for (int b = bucket_for_size(size); b < NUM_BUCKETS; b++) {
         for (struct linked_list_node *node = free_lists[b].first; node; node = node->next) {
             if (node->size < size) continue;
 
             size_t remaining = node->size - size;
-
-            // Split the block if the leftover is large enough to be useful on
-            // its own (must hold a header plus the minimum 8-byte alignment)
             if (remaining >= sizeof(struct linked_list_node) + 8) {
-                // Remove from the free list before resizing so the bucket
-                // index stays accurate
                 free_list_remove(node);
                 node->size = size;
 
@@ -198,51 +165,31 @@ void *kmalloc(size_t size) {
                     (struct linked_list_node *)((uint8_t *)NODE_DATA(node) + size);
                 split->size = remaining - sizeof(struct linked_list_node);
                 split->used = false;
-
-                // Wire the split node into the global ordered list
                 split->next = node->next;
                 split->prev = node;
                 if (node->next) node->next->prev = split;
                 else            all_nodes.last = split;
                 node->next = split;
-
                 free_list_insert(split);
-
-                HEAP_LOG("kmalloc: split remainder="); HEAP_LOG_NUM(split->size); HEAP_LOG("\n");
             } else {
-                // Use the whole block; remove it from the free list
                 free_list_remove(node);
             }
 
             node->used = true;
-
             HEAP_LOG("kmalloc: size="); HEAP_LOG_NUM(size);
             HEAP_LOG(" ptr=");          HEAP_LOG_HEX((uint64_t)NODE_DATA(node));
             HEAP_LOG("\n");
-
             return NODE_DATA(node);
         }
     }
 
-    // No suitable free block found; grow the heap and allocate directly from
-    // the new region rather than recursing back through the full search
     serial_print("kmalloc: no free block, expanding heap\n");
-    struct linked_list_node *node = expand_heap(size);
-    if (!node) {
+    if (!expand_heap(size)) {
         serial_print("kmalloc: out of memory\n");
         return NULL;
     }
 
-    // expand_heap already inserted the node into the free list; reuse the
-    // normal path by removing it and marking it used here
-    free_list_remove(node);
-    node->used = true;
-
-    HEAP_LOG("kmalloc: (after expand) size="); HEAP_LOG_NUM(size);
-    HEAP_LOG(" ptr=");                          HEAP_LOG_HEX((uint64_t)NODE_DATA(node));
-    HEAP_LOG("\n");
-
-    return NODE_DATA(node);
+    return kmalloc(size);
 }
 
 // Release a previously allocated block and coalesce adjacent free blocks

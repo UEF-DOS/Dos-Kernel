@@ -12,6 +12,7 @@
 #include <x86_64/drivers/block/ide.h>
 #include <x86_64/drivers/fs/fat12.h>
 #include <x86_64/drivers/fs/vfs.h>
+#include <x86_64/process.h>
 
 // Set the base revision to 5, this is recommended as this is the latest
 // base revision described by the Limine boot protocol specification.
@@ -58,6 +59,11 @@ static void hcf(void) {
     for (;;) {
         asm ("hlt");
     }
+}
+
+void print_hello() {
+    serial_print("Hello from the process!\n");
+    process_exit();
 }
 
 // The following will be our kernel's entry point.
@@ -137,6 +143,10 @@ void kmain(void) {
     } else {
         serial_print("Failed to open file from VFS\n");
     }
+
+    serial_print("Creating process\n");
+    create_process((void *)print_hello);
+    run_process(1);
 
     serial_print("DONE\n");
 

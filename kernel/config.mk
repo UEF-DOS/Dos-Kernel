@@ -8,7 +8,7 @@
 # Make sure to run `make clean` after changing options here to ensure a full rebuild with the new settings.
 
 # Enable extra debug output
-CONFIG_DEBUG ?= n
+CONFIG_DEBUG ?= y
 
 # Enable the APIC timer calibration
 CONFIG_APIC_TIMER ?= y
