@@ -5,6 +5,8 @@
 #include <x86_64/serial.h>
 #include <x86_64/idt.h>
 
+extern uint64_t int128_handler();
+
 #define APIC_TIMER_VECTOR 0x20
 
 typedef struct {
@@ -58,6 +60,8 @@ void idt_init() {
     // Add a handler for the APIC timer (vector 0x20)
     idt_set_descriptor(APIC_TIMER_VECTOR, isr_stub_table[APIC_TIMER_VECTOR], 0x8E);
     vectors[APIC_TIMER_VECTOR] = true;
+    idt_set_descriptor(128, (void*)int128_handler, 0xEE);
+    vectors[128] = true;
 
     // Mask the legacy PIC so we don't receive IRQs from it
     outb(0xA1, 0xFF); // slave

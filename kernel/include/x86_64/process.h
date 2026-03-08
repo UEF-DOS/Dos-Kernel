@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-uint32_t create_process(void *entry);
+uint32_t create_process(void *entry, void *pml4);
 void run_process(uint32_t pid);
 void process_exit();
 

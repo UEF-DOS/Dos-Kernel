@@ -32,11 +32,13 @@ ramdisk:
 	mv -v ramdisk.img iso_root/boot/modules/
 
 # Creates a 1.44MB FAT12-formatted hard disk for qemu.
+# also copies what ever is placed in the apps/ dir to the root
 .PHONY: ide.hdd
 ide.hdd:
 	dd if=/dev/zero bs=1K count=1440 of=ide.hdd
 	mkfs.fat -F 12 ide.hdd
-
+	mcopy -i ide.hdd apps/* ::/
+	
 .PHONY: run
 run: $(IMAGE_NAME).iso ide.hdd
 	qemu-system-x86_64 \

@@ -13,6 +13,7 @@
 #include <x86_64/drivers/fs/fat12.h>
 #include <x86_64/drivers/fs/vfs.h>
 #include <x86_64/process.h>
+#include <x86_64/executors/elf.h>
 
 // Set the base revision to 5, this is recommended as this is the latest
 // base revision described by the Limine boot protocol specification.
@@ -59,11 +60,6 @@ static void hcf(void) {
     for (;;) {
         asm ("hlt");
     }
-}
-
-void print_hello() {
-    serial_print("Hello from the process!\n");
-    process_exit();
 }
 
 // The following will be our kernel's entry point.
@@ -145,9 +141,13 @@ void kmain(void) {
     }
 
     serial_print("Creating process\n");
-    create_process((void *)print_hello);
-    run_process(1);
+    void *pml4;
+    uint64_t entry;
 
+    if (parse_elf("/main", &pml4, &entry) == 0) {
+        uint32_t pid = create_process(pml4, (void *)entry);
+        if (pid) run_process(pid);
+    }
     serial_print("DONE\n");
 
     // Note: we assume the framebuffer model is RGB with 32-bit pixels.

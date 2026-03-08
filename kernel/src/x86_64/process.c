@@ -91,22 +91,17 @@ static void *allocate_process_stack(void *pml4) {
     return frame;
 }
 
-uint32_t create_process(void *entry) {
+uint32_t create_process(void *pml4, void *entry) {
     process_t *proc = alloc_process_slot();
     if (!proc) {
         serial_print("create_process: process table full\n");
         return 0;
     }
 
-    void *pml4 = vmm_create_pml4();
-    if (!pml4) {
-        serial_print("create_process: failed to create PML4\n");
-        return 0;
-    }
-
     void *stack = allocate_process_stack(pml4);
     if (!stack) {
         serial_print("create_process: failed to allocate stack\n");
+        vmm_destroy_pml4(pml4);
         return 0;
     }
 
@@ -177,6 +172,8 @@ void run_process(uint32_t pid) {
     serial_print("\n");
 
     run_process_switch(&kernel_rsp, (uint64_t)proc->pml4_phys, proc->stack_top, (uint64_t)proc->entry);
+
+    __asm__ volatile ("sti");
 
     proc->state = PROCESS_STATE_DEAD;
     current_pid = 0;
