@@ -28,7 +28,7 @@ static volatile uint64_t limine_base_revision[] = LIMINE_BASE_REVISION(5);
 // once or marked as used with the "used" attribute as done here.
 
 __attribute__((used, section(".limine_requests")))
-static volatile struct limine_framebuffer_request framebuffer_request = {
+volatile struct limine_framebuffer_request framebuffer_request = {
     .id = LIMINE_FRAMEBUFFER_REQUEST_ID,
     .revision = 0
 };
@@ -149,12 +149,6 @@ void kmain(void) {
         if (pid) run_process(pid);
     }
     serial_print("DONE\n");
-
-    // Note: we assume the framebuffer model is RGB with 32-bit pixels.
-    for (size_t i = 0; i < 100; i++) {
-        volatile uint32_t *fb_ptr = framebuffer->address;
-        fb_ptr[i * (framebuffer->pitch / 4) + i] = 0xffffff;
-    }
 
     // We're done, just hang...
     hcf();

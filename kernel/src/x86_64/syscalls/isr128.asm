@@ -2,7 +2,6 @@ global int128_handler
 extern syscall_handler
 
 int128_handler:
-    push rax
     push rbx
     push rcx
     push rdx
@@ -13,7 +12,11 @@ int128_handler:
     push r10
     push r11
 
-    mov rdi, rax
+    mov rcx, rdx    ; arg3
+    mov rdx, rsi    ; arg2
+    mov rsi, rdi    ; arg1
+    mov rdi, rax    ; syscall_num
+
     call syscall_handler
 
     pop r11
@@ -25,6 +28,5 @@ int128_handler:
     pop rdx
     pop rcx
     pop rbx
-    pop rax
 
     iretq
