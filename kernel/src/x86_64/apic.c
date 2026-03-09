@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <stdbool.h>
+#include <limine.h>
 #include <x86_64/commands.h>
 #include <x86_64/allocator/addr.h>
 #include <x86_64/allocator/vmm.h>
@@ -14,9 +15,17 @@
 #define APIC_TIMER_INIT  0x380
 #define APIC_TIMER_CURRENT 0x390
 
+#define IOAPIC_BASE     0xFEC00000
+#define IOAPIC_REGSEL   0x00
+#define IOAPIC_IOWIN    0x10
+
+#define IOAPIC_REDTBL_BASE 0x10
+
 #define PIT_FREQ 1193182u
 
-uintptr_t cpu_get_apic_base(void);
+extern volatile struct limine_hhdm_request hhdm_request;
+
+uintptr_t cpu_get_apic_base();
 
 static inline volatile uint32_t *apic_reg(uint32_t reg) {
     return (volatile uint32_t *)phys_to_virt(cpu_get_apic_base() + reg);
@@ -28,6 +37,12 @@ static inline uint32_t read_register(uint32_t reg) {
 
 static inline void write_reg(uint32_t reg, uint32_t value) {
     *apic_reg(reg) = value;
+}
+
+static inline void ioapic_write(uint32_t reg, uint32_t data) {
+    uintptr_t base = hhdm_request.response->offset + IOAPIC_BASE;
+    *(volatile uint32_t*)(base + 0x00) = reg;
+    *(volatile uint32_t*)(base + 0x10) = data;
 }
 
 void cpu_set_apic_base(uintptr_t apic) {
@@ -59,6 +74,8 @@ void apic_map() {
     uint64_t *pml4 = (uint64_t *)(cr3 & ~0xFFFULL);
     void *virt = (void *)phys_to_virt((uint64_t)phys);
     vmm_map_range(pml4, (uint64_t)virt, (void *)phys, 0x1000, 0x13);
+    void *io_virt = (void *)phys_to_virt(IOAPIC_BASE);
+    vmm_map_range(pml4, (uint64_t)io_virt, (void *)IOAPIC_BASE, 0x1000, 0x13);
 }
 
 void apic_eoi() {
@@ -66,14 +83,12 @@ void apic_eoi() {
 }
 
 static void pit_set_divisor(uint16_t divisor) {
-    // Channel 0, access mode: lobyte/hibyte, mode 2 (rate generator), binary
     outb(0x43, 0x34);
     outb(0x40, divisor & 0xFF);
     outb(0x40, divisor >> 8);
 }
 
 static uint16_t pit_read_count(void) {
-    // Latch count, then read low/high
     outb(0x43, 0x00);
     uint8_t lo = inb(0x40);
     uint8_t hi = inb(0x40);
@@ -81,7 +96,6 @@ static uint16_t pit_read_count(void) {
 }
 
 void apic_timer_init(uint32_t initial_count, bool periodic) {
-    // Divide by 16 (common stable setting)
     write_reg(APIC_TIMER_DIV, 0x3);
 
     uint32_t mode = periodic ? (1 << 17) : 0;
@@ -116,6 +130,20 @@ uint32_t apic_calibrate_timer(uint32_t target_hz) {
 
     apic_timer_init(init, true);
     return init;
+}
+
+void ioapic_route_irq(uint8_t irq, uint8_t vector, uint8_t apic_id) {
+    uint32_t reg = 0x10 + (irq * 2);
+    ioapic_write(reg, vector);
+    ioapic_write(reg + 1, apic_id << 24);
+}
+
+void ioapic_set_irq(uint8_t irq, uint64_t apic_id, uint8_t vector) {
+    uint32_t reg = IOAPIC_REDTBL_BASE + irq * 2;
+    
+    ioapic_write(reg, vector);
+    
+    ioapic_write(reg + 1, (uint32_t)(apic_id << 24));
 }
 
 void enable_apic() {

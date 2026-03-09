@@ -26,35 +26,33 @@ void frame_allocator_init(struct limine_memmap_response *memmap_response, uint64
     // Find the largest usable region to place the bitmap in
     struct limine_memmap_entry *best = NULL;
     for (uint64_t i = 0; i < count; i++) {
-        if (memmap_response->entries[i]->type == LIMINE_MEMMAP_USABLE) {
+        if (memmap_response->entries[i]->type == LIMINE_MEMMAP_USABLE
+            && memmap_response->entries[i]->length >= total_frames) {
             if (best == NULL || memmap_response->entries[i]->length > best->length)
                 best = memmap_response->entries[i];
         }
     }
 
-    if (best == NULL || best->length < total_frames) {
+    if (best == NULL) {
         serial_print("pmm: no region large enough for bitmap!\n");
         return;
     }
 
-    bit_map = (uint8_t *)(best->base + hhdm_offset);
+    uint64_t bitmap_phys   = best->base;
+    uint64_t bitmap_frames = (total_frames + 4095) / 4096;
+    bit_map = (uint8_t *)(bitmap_phys + hhdm_offset);
 
-    serial_print("bitmap_phys: ");  serial_print_hex(best->base);
-    serial_print("\nbitmap_virt: "); serial_print_hex((uint64_t)bit_map);
+    serial_print("bitmap_phys: ");   serial_print_hex(bitmap_phys);
+    serial_print("\nbitmap_virt: ");  serial_print_hex((uint64_t)bit_map);
     serial_print("\nhighest_addr: "); serial_print_hex(highest_addr);
     serial_print("\nbitmap_size: ");  serial_print_num(total_frames);
     serial_print(" bytes\n");
 
-    // Mark only frames covered by memmap entries as used
+    // Mark everything as used — covers gaps between memmap entries
+    // that would otherwise be left as uninitialized memory
     serial_print("marking everything used...\n");
-    for (uint64_t i = 0; i < count; i++) {
-        uint64_t base  = memmap_response->entries[i]->base;
-        uint64_t len   = memmap_response->entries[i]->length;
-        uint64_t start = base / 4096;
-        uint64_t end   = (base + len) / 4096;
-        for (uint64_t j = start; j < end && j < total_frames; j++)
-            bit_map[j] = USED;
-    }
+    for (uint64_t i = 0; i < total_frames; i++)
+        bit_map[i] = USED;
 
     // Free only usable regions
     serial_print("marking usable as free...\n");
@@ -72,34 +70,31 @@ void frame_allocator_init(struct limine_memmap_response *memmap_response, uint64
     for (uint64_t i = 0; i < (16 * 1024 * 1024) / 4096; i++) bit_map[i] = USED;
 
     // Also reserve the frames occupied by the bitmap itself
-    uint64_t bitmap_start_frame = best->base / 4096;
-    uint64_t bitmap_frame_count = (total_frames + 4095) / 4096;
-    for (uint64_t i = bitmap_start_frame; i < bitmap_start_frame + bitmap_frame_count; i++)
+    uint64_t bitmap_start_frame = bitmap_phys / 4096;
+    for (uint64_t i = bitmap_start_frame; i < bitmap_start_frame + bitmap_frames; i++)
         bit_map[i] = USED;
 
     serial_print("frame allocator initialized\n");
 }
 
 void *frame_alloc(uint64_t n) {
-    for (uint64_t i = 0; i < total_frames; i++) {
+    uint64_t i = 0;
+    while (i < total_frames) {
 
         // Skip used frames
-        if (bit_map[i] == USED) continue;
+        if (bit_map[i] == USED) { i++; continue; }
 
-        // Check for frames
+        // Check for n contiguous frames
         uint64_t run = 0;
         while (run < n && (i + run) < total_frames && bit_map[i + run] == UNUSED)
             run++;
 
         // Not enough
-        if (run < n) { i += run; continue; }
+        if (run < n) { i += run + 1; continue; }
 
         // Found n frames
         for (uint64_t j = i; j < i + n; j++) bit_map[j] = USED;
 
-        serial_print("frame_alloc: phys=");
-        serial_print_hex(i * 4096);
-        serial_print("\n");
         return (void *)(i * 4096);
     }
 
@@ -117,13 +112,6 @@ void frame_free(void *frame_addr, uint64_t n) {
         return;
     }
 
-    for (uint64_t i = 0; i < n; i++) {
+    for (uint64_t i = 0; i < n; i++)
         bit_map[frame + i] = UNUSED;
-    }
-
-    serial_print("frame_free: phys=");
-    serial_print_hex((uint64_t)frame_addr);
-    serial_print(" n=");
-    serial_print_num(n);
-    serial_print("\n");
 }

@@ -5,48 +5,46 @@
 #include <x86_64/allocator/heap.h>
 #include <x86_64/serial.h>
 #include <x86_64/process.h>
-#include <x86_64/sched.h>
 
 #define MAX_PROCESSES 0
 
 #ifdef SINGLE_TASKING
 #undef MAX_PROCESSES
-#define MAX_PROCESSES 2
+#define MAX_PROCESSES 3   // Kernel cmd and another task 
 #elif defined(MULTITASKING)
 #undef MAX_PROCESSES
 #define MAX_PROCESSES 256
 #endif
 
-#define STACK_SIZE      0x4000
+#define STACK_PAGES     64
+#define STACK_SIZE      (STACK_PAGES * 4096)
 #define USER_STACK_TOP  0x00007FFFFFFFFFFF
 #define USER_STACK_VIRT (USER_STACK_TOP - STACK_SIZE + 1)
 
-typedef enum {
-    PROCESS_STATE_DEAD    = 0,
-    PROCESS_STATE_READY   = 1,
-    PROCESS_STATE_RUNNING = 2,
-    PROCESS_STATE_BLOCKED = 3,
-} process_state_t;
-
-typedef struct {
-    uint32_t        pid;
-    process_state_t state;
-    void           *pml4_phys;
-    void           *stack_phys;
-    uint64_t        kernel_rsp;
-    void           *entry;
-    uint64_t        stack_top;
-} process_t;
-
 static process_t process_table[MAX_PROCESSES];
 static uint32_t  next_pid         = 1;
+static uint8_t   proc_count       = 0;
 static uint64_t  kernel_rsp       = 0;
 static uint64_t  kernel_pml4_phys = 0;
 
 uint32_t current_pid = 0;
 
+static void fpu_save(uint8_t *state) {
+    __asm__ volatile ("fxsave (%0)" :: "r"(state) : "memory");
+}
+
+static void fpu_restore(uint8_t *state) {
+    __asm__ volatile ("fxrstor (%0)" :: "r"(state) : "memory");
+}
+
+static void fpu_init_process(uint8_t *state) {
+    __asm__ volatile ("fninit");
+    __asm__ volatile ("fxsave (%0)" :: "r"(state) : "memory");
+}
+
 static void free_process(process_t *proc) {
-    frame_free(proc->stack_phys, 4);
+    if (!proc) return;
+    frame_free(proc->stack_phys, STACK_PAGES);
     vmm_destroy_pml4(proc->pml4_phys);
     proc->pid        = 0;
     proc->state      = PROCESS_STATE_DEAD;
@@ -72,26 +70,21 @@ static process_t *alloc_process_slot(void) {
 }
 
 static void *allocate_process_stack(void *pml4) {
-    void *frame = frame_alloc(4);
+    void *frame = frame_alloc(STACK_PAGES);
     if (!frame) {
         serial_print("allocate_process_stack: frame_alloc failed\n");
         return NULL;
     }
-
-    serial_print("allocate_process_stack: phys=");
-    serial_print_hex((uint64_t)frame);
-    serial_print("\n");
-
     vmm_map_range(pml4, USER_STACK_VIRT, frame, STACK_SIZE, 0x7);
-
-    serial_print("allocate_process_stack: mapped at virt=");
-    serial_print_hex(USER_STACK_VIRT);
-    serial_print("\n");
-
     return frame;
 }
 
 uint32_t create_process(void *pml4, void *entry) {
+    if (proc_count > MAX_PROCESSES) {
+        serial_print("Too many processes running!\n");
+        return 0;
+    }
+
     process_t *proc = alloc_process_slot();
     if (!proc) {
         serial_print("create_process: process table full\n");
@@ -113,10 +106,7 @@ uint32_t create_process(void *pml4, void *entry) {
     proc->entry      = entry;
     proc->stack_top  = (USER_STACK_TOP & ~0xFULL) - 8;
 
-    uint64_t *stack_ret = (uint64_t *)phys_to_virt(
-        (uint64_t)stack + STACK_SIZE
-    );
-    *(--stack_ret) = (uint64_t)&process_exit;
+    fpu_init_process(proc->fpu_state);
 
     serial_print("create_process: pid=");
     serial_print_num(proc->pid);
@@ -125,6 +115,18 @@ uint32_t create_process(void *pml4, void *entry) {
     serial_print("\n");
 
     return proc->pid;
+}
+
+void map_range_into_current_process(uint64_t virt, void *phys, uint64_t size, uint64_t flags) {
+    process_t *proc = get_process(current_pid);
+    if (!proc) return;
+    vmm_map_range(proc->pml4_phys, virt, phys, size, flags);
+}
+
+void *get_current_process_pml4() {
+    process_t *proc = get_process(current_pid);
+    if (!proc) return NULL;
+    return proc->pml4_phys;
 }
 
 #ifdef SINGLE_TASKING
@@ -163,15 +165,23 @@ void run_process(uint32_t pid) {
     process_t *proc = get_process(pid);
     if (!proc) { serial_print("run_process: invalid pid\n"); return; }
 
-    proc->state      = PROCESS_STATE_RUNNING;
-    current_pid      = pid;
     kernel_pml4_phys = vmm_get_kernel_pml4();
+
+    uint64_t *kpml4 = (uint64_t *)phys_to_virt(kernel_pml4_phys);
+    uint64_t *ppml4 = (uint64_t *)phys_to_virt((uint64_t)proc->pml4_phys);
+    for (int i = 256; i < 512; i++)
+        ppml4[i] = kpml4[i];
+
+    proc->state = PROCESS_STATE_RUNNING;
+    current_pid = pid;
 
     serial_print("run_process: launching pid=");
     serial_print_num(pid);
     serial_print("\n");
 
+    fpu_restore(proc->fpu_state);
     run_process_switch(&kernel_rsp, (uint64_t)proc->pml4_phys, proc->stack_top, (uint64_t)proc->entry);
+    fpu_save(proc->fpu_state);
 
     __asm__ volatile ("sti");
 
@@ -181,15 +191,19 @@ void run_process(uint32_t pid) {
 }
 
 __attribute__((noreturn))
-void process_exit() {
+void process_exit(uint64_t code) {
     process_t *proc = get_process(current_pid);
-    if (proc) free_process(proc);
+
+    if (proc) {
+        fpu_save(proc->fpu_state);
+    }
 
     serial_print("process_exit: pid=");
     serial_print_num(current_pid);
     serial_print(" exiting\n");
 
     process_exit_switch(kernel_pml4_phys, kernel_rsp);
+    
     __builtin_unreachable();
 }
 
@@ -212,15 +226,22 @@ void run_process(uint32_t pid) {
 __attribute__((noreturn))
 void process_exit(uint64_t exit_code) {
     process_t *proc = get_process(current_pid);
-    if (proc) free_process(proc);
+    if (proc)
+        fpu_save(proc->fpu_state);
 
     serial_print("process_exit: pid=");
     serial_print_num(current_pid);
     serial_print(" exiting\n");
 
-    __asm__ volatile ("mov %0, %%rax" :: "r"(exit_code));
-
     current_pid = 0;
+
+    uint64_t kpml4 = vmm_get_kernel_pml4();
+    __asm__ volatile ("mov %0, %%cr3" : : "r"(kpml4) : "memory");
+
+    if (proc)
+        free_process(proc);
+
+    __asm__ volatile ("mov %0, %%rax" :: "r"(exit_code));
     for (;;) __asm__ volatile ("cli; hlt");
 }
 

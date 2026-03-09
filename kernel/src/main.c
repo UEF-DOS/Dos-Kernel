@@ -1,4 +1,3 @@
-#include "x86_64/serial.h"
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
@@ -9,11 +8,13 @@
 #include <x86_64/allocator/vmm.h>
 #include <x86_64/allocator/heap.h>
 #include <x86_64/apic.h>
+#include <x86_64/serial.h>
 #include <x86_64/drivers/block/ide.h>
 #include <x86_64/drivers/fs/fat12.h>
 #include <x86_64/drivers/fs/vfs.h>
 #include <x86_64/process.h>
-#include <x86_64/executors/elf.h>
+#include <x86_64/file_parsers/elf.h>
+#include <x86_64/fpu.h>
 
 // Set the base revision to 5, this is recommended as this is the latest
 // base revision described by the Limine boot protocol specification.
@@ -86,13 +87,8 @@ void kmain(void) {
         hcf();
     }
 
-    // Fetch the first framebuffer.
-    struct limine_framebuffer *framebuffer = framebuffer_request.response->framebuffers[0];
-    
     serial_print("Initializing GDT\n");
     gdt_init();
-    serial_print("Initializing IDT\n");
-    idt_init();
     
     serial_print("Initializing PMM\n");
     frame_allocator_init(memmap_request.response, hhdm_request.response->offset);
@@ -100,12 +96,16 @@ void kmain(void) {
     vmm_init();
     serial_print("Initializing HEAP\n");
     heap_init();
+    fpu_init();
 
     serial_print("Enabling APIC\n");
     uintptr_t apic_base = cpu_get_apic_base();
     cpu_set_apic_base(apic_base);
     apic_map();
     enable_apic();
+
+    serial_print("Initializing IDT\n");
+    idt_init();
 
 #ifdef APIC_TIMER_ENABLED
     // Calibrate the APIC timer using the configured frequency (defaults to 100Hz).

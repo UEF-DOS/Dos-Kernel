@@ -5,9 +5,12 @@
 #include <memory.h>
 #include <stdint.h>
 #include <stddef.h>
+#include <stdbool.h>
+
+extern uint64_t highest_addr;
 
 #define ENTRY_PHYS(e)  ((e) & ~0xFFFULL)
-#define TABLE_FLAGS    0x3
+#define TABLE_FLAGS    0x7
 
 #ifdef DEBUG
 #define VMM_LOG(msg)   serial_print(msg)
@@ -29,7 +32,7 @@ static void *alloc_table() {
     return phys;
 }
 
-void map_page(uint64_t *pml4_phys, uint64_t virt, void *phys_addr, uint64_t flags) {
+bool map_page(uint64_t *pml4_phys, uint64_t virt, void *phys_addr, uint64_t flags) {
     uint64_t *pml4 = (uint64_t *)phys_to_virt((uint64_t)pml4_phys);
 
     uint64_t pml4i = (virt >> 39) & 0x1FF;
@@ -44,7 +47,7 @@ void map_page(uint64_t *pml4_phys, uint64_t virt, void *phys_addr, uint64_t flag
 
     if (!(pml4[pml4i] & 1)) {
         void *phys = alloc_table();
-        if (!phys) { serial_print("map_page: failed to allocate PDPT\n"); return; }
+        if (!phys) { serial_print("map_page: failed to allocate PDPT\n"); return false; }
         VMM_LOG("map_page: allocated PDPT phys="); VMM_LOG_HEX((uint64_t)phys); VMM_LOG("\n");
         pml4[pml4i] = (uint64_t)phys | TABLE_FLAGS;
     }
@@ -52,7 +55,7 @@ void map_page(uint64_t *pml4_phys, uint64_t virt, void *phys_addr, uint64_t flag
 
     if (!(pdpt[pdpti] & 1)) {
         void *phys = alloc_table();
-        if (!phys) { serial_print("map_page: failed to allocate PD\n"); return; }
+        if (!phys) { serial_print("map_page: failed to allocate PD\n"); return false; }
         VMM_LOG("map_page: allocated PD phys="); VMM_LOG_HEX((uint64_t)phys); VMM_LOG("\n");
         pdpt[pdpti] = (uint64_t)phys | TABLE_FLAGS;
     }
@@ -60,16 +63,22 @@ void map_page(uint64_t *pml4_phys, uint64_t virt, void *phys_addr, uint64_t flag
 
     if (!(pd[pdi] & 1)) {
         void *phys = alloc_table();
-        if (!phys) { serial_print("map_page: failed to allocate PT\n"); return; }
+        if (!phys) { serial_print("map_page: failed to allocate PT\n"); return false; }
         VMM_LOG("map_page: allocated PT phys="); VMM_LOG_HEX((uint64_t)phys); VMM_LOG("\n");
         pd[pdi] = (uint64_t)phys | TABLE_FLAGS;
     }
     uint64_t *pt = (uint64_t *)phys_to_virt(ENTRY_PHYS(pd[pdi]));
 
-    pt[pti] = ENTRY_PHYS((uint64_t)phys_addr) | flags | 0x1;
+    if (pt[pti] & 1) {
+        VMM_LOG("map_page: WARNING overwriting existing entry at virt=");
+        VMM_LOG_HEX(virt); VMM_LOG("\n");
+    }
+
+    pt[pti] = ENTRY_PHYS((uint64_t)phys_addr) | (flags & ~0x1ULL) | 0x1;
     VMM_LOG("map_page: PT entry="); VMM_LOG_HEX(pt[pti]); VMM_LOG("\n");
 
     __asm__ volatile ("invlpg (%0)" : : "r"(virt) : "memory");
+    return true;
 }
 
 void unmap_page(uint64_t *pml4_phys, uint64_t virt) {
@@ -80,20 +89,16 @@ void unmap_page(uint64_t *pml4_phys, uint64_t virt) {
     uint64_t pdi   = (virt >> 21) & 0x1FF;
     uint64_t pti   = (virt >> 12) & 0x1FF;
 
-    VMM_LOG("unmap_page: virt="); VMM_LOG_HEX(virt); VMM_LOG("\n");
-
-    if (!(pml4[pml4i] & 1)) { serial_print("unmap_page: PML4 entry not present\n"); return; }
+    if (!(pml4[pml4i] & 1)) return;
     uint64_t *pdpt = (uint64_t *)phys_to_virt(ENTRY_PHYS(pml4[pml4i]));
 
-    if (!(pdpt[pdpti] & 1)) { serial_print("unmap_page: PDPT entry not present\n"); return; }
+    if (!(pdpt[pdpti] & 1)) return;
     uint64_t *pd = (uint64_t *)phys_to_virt(ENTRY_PHYS(pdpt[pdpti]));
 
-    if (!(pd[pdi] & 1)) { serial_print("unmap_page: PD entry not present\n"); return; }
+    if (!(pd[pdi] & 1)) return;
     uint64_t *pt = (uint64_t *)phys_to_virt(ENTRY_PHYS(pd[pdi]));
 
     pt[pti] = 0;
-    VMM_LOG("unmap_page: cleared PT entry\n");
-
     __asm__ volatile ("invlpg (%0)" : : "r"(virt) : "memory");
 }
 
@@ -108,6 +113,7 @@ void *vmm_create_pml4() {
     __asm__ volatile ("mov %%cr3, %0" : "=r"(cr3));
     uint64_t *cur_pml4 = (uint64_t *)phys_to_virt(cr3 & ~0xFFFULL);
 
+    // copy kernel half only (upper 256 entries)
     for (int i = 256; i < 512; i++)
         new_pml4[i] = cur_pml4[i];
 
@@ -116,6 +122,8 @@ void *vmm_create_pml4() {
 }
 
 void vmm_destroy_pml4(void *pml4_phys) {
+    if (!pml4_phys) return;
+
     uint64_t *pml4 = (uint64_t *)phys_to_virt((uint64_t)pml4_phys);
 
     for (int i = 0; i < 256; i++) {
@@ -132,7 +140,10 @@ void vmm_destroy_pml4(void *pml4_phys) {
 
                 for (int l = 0; l < 512; l++) {
                     if (!(pt[l] & 1)) continue;
-                    frame_free((void *)ENTRY_PHYS(pt[l]), 1);
+                    uint64_t frame = ENTRY_PHYS(pt[l]);
+                    if (frame < 0x1000000ULL) continue;
+                    if (frame >= highest_addr) continue;
+                    frame_free((void *)frame, 1);
                 }
 
                 frame_free((void *)ENTRY_PHYS(pd[k]), 1);
@@ -148,25 +159,27 @@ void vmm_destroy_pml4(void *pml4_phys) {
 }
 
 void vmm_switch(void *pml4_phys) {
-    VMM_LOG("vmm_switch: pml4_phys="); VMM_LOG_HEX((uint64_t)pml4_phys); VMM_LOG("\n");
     __asm__ volatile ("mov %0, %%cr3" : : "r"((uint64_t)pml4_phys) : "memory");
 }
 
-void vmm_map_range(uint64_t *pml4, uint64_t virt, void *phys, uint64_t size, uint64_t flags) {
+bool vmm_map_range(uint64_t *pml4, uint64_t virt, void *phys, uint64_t size, uint64_t flags) {
     VMM_LOG("vmm_map_range: virt="); VMM_LOG_HEX(virt);
     VMM_LOG(" phys=");               VMM_LOG_HEX((uint64_t)phys);
     VMM_LOG(" size=");               VMM_LOG_HEX(size);
     VMM_LOG("\n");
 
-    for (uint64_t off = 0; off < size; off += 4096)
-        map_page(pml4, virt + off, (uint8_t *)phys + off, flags);
+    for (uint64_t off = 0; off < size; off += 4096) {
+        if (!map_page(pml4, virt + off, (uint8_t *)phys + off, flags)) {
+            serial_print("vmm_map_range: failed at offset ");
+            serial_print_hex(off);
+            serial_print("\n");
+            return false;
+        }
+    }
+    return true;
 }
 
 void vmm_unmap_range(uint64_t *pml4, uint64_t virt, uint64_t size) {
-    VMM_LOG("vmm_unmap_range: virt="); VMM_LOG_HEX(virt);
-    VMM_LOG(" size=");                 VMM_LOG_HEX(size);
-    VMM_LOG("\n");
-
     for (uint64_t off = 0; off < size; off += 4096)
         unmap_page(pml4, virt + off);
 }
@@ -179,8 +192,6 @@ void *vmm_get_phys(uint64_t *pml4_phys, uint64_t virt) {
     uint64_t pdi   = (virt >> 21) & 0x1FF;
     uint64_t pti   = (virt >> 12) & 0x1FF;
 
-    VMM_LOG("vmm_get_phys: virt="); VMM_LOG_HEX(virt); VMM_LOG("\n");
-
     if (!(pml4[pml4i] & 1)) return NULL;
     uint64_t *pdpt = (uint64_t *)phys_to_virt(ENTRY_PHYS(pml4[pml4i]));
 
@@ -192,10 +203,7 @@ void *vmm_get_phys(uint64_t *pml4_phys, uint64_t virt) {
 
     if (!(pt[pti] & 1)) return NULL;
 
-    void *phys = (void *)(ENTRY_PHYS(pt[pti]) + (virt & 0xFFF));
-    VMM_LOG("vmm_get_phys: phys="); VMM_LOG_HEX((uint64_t)phys); VMM_LOG("\n");
-
-    return phys;
+    return (void *)(ENTRY_PHYS(pt[pti]) + (virt & 0xFFF));
 }
 
 void vmm_init() {

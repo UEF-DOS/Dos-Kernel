@@ -1,9 +1,10 @@
 #include <x86_64/drivers/fs/vfs.h>
+#include <x86_64/allocator/heap.h>
 #include <x86_64/allocator/vmm.h>
 #include <x86_64/allocator/pmm.h>
 #include <x86_64/allocator/addr.h>
 #include <x86_64/serial.h>
-#include <x86_64/executors/elf.h>
+#include <x86_64/file_parsers/elf.h>
 #include <stdint.h>
 #include <stddef.h>
 
@@ -77,14 +78,17 @@ int parse_elf(const char *filename, void **out_pml4, uint64_t *out_entry) {
     }
     if (size < sizeof(elf64_hdr_t)) {
         serial_print("parse_elf: file too small\n");
+        kfree(data);
         return -1;
     }
     if (data[0] != 0x7F || data[1] != 'E' || data[2] != 'L' || data[3] != 'F') {
         serial_print("parse_elf: invalid magic\n");
+        kfree(data);
         return -1;
     }
     if (data[4] != 2) {
         serial_print("parse_elf: not a 64-bit ELF\n");
+        kfree(data);
         return -1;
     }
 
@@ -94,16 +98,19 @@ int parse_elf(const char *filename, void **out_pml4, uint64_t *out_entry) {
 
     if (hdr.e_type != ET_EXEC) {
         serial_print("parse_elf: not an executable (ET_EXEC)\n");
+        kfree(data);
         return -1;
     }
     if (hdr.e_phoff == 0 || hdr.e_phnum == 0) {
         serial_print("parse_elf: no program headers\n");
+        kfree(data);
         return -1;
     }
 
     void *pml4 = vmm_create_pml4();
     if (!pml4) {
         serial_print("parse_elf: failed to create PML4\n");
+        kfree(data);
         return -1;
     }
 
@@ -116,6 +123,7 @@ int parse_elf(const char *filename, void **out_pml4, uint64_t *out_entry) {
         if (offset + sizeof(elf64_phdr_t) > size) {
             serial_print("parse_elf: program header out of bounds\n");
             vmm_destroy_pml4(pml4);
+            kfree(data);
             return -1;
         }
 
@@ -129,6 +137,7 @@ int parse_elf(const char *filename, void **out_pml4, uint64_t *out_entry) {
         if (phdr.p_offset + phdr.p_filesz > size) {
             serial_print("parse_elf: segment data out of bounds\n");
             vmm_destroy_pml4(pml4);
+            kfree(data);
             return -1;
         }
 
@@ -144,6 +153,7 @@ int parse_elf(const char *filename, void **out_pml4, uint64_t *out_entry) {
             if (!phys) {
                 serial_print("parse_elf: out of memory loading segment\n");
                 vmm_destroy_pml4(pml4);
+                kfree(data);
                 return -1;
             }
 
@@ -165,7 +175,6 @@ int parse_elf(const char *filename, void **out_pml4, uint64_t *out_entry) {
             for (int64_t b = copy_start; b < copy_end; b++) {
                 page[b - seg_byte_start] = data[phdr.p_offset + b];
             }
-
 #ifdef DEBUG
             serial_print("Loaded segment page: virt=");
             serial_print_hex(virt);
@@ -184,6 +193,7 @@ int parse_elf(const char *filename, void **out_pml4, uint64_t *out_entry) {
     serial_print("\n");
 #endif
 
+    kfree(data);
     *out_pml4  = pml4;
     *out_entry = hdr.e_entry;
     return 0;
