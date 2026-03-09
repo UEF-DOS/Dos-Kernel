@@ -18,7 +18,8 @@ typedef struct {
     uint64_t        kernel_rsp;
     void           *entry;
     uint64_t        stack_top;
-    uint8_t fpu_state[512] __attribute__((aligned(16)));
+    uint8_t         fpu_state[512] __attribute__((aligned(16)));
+    uint64_t        saved_rsp;
 } process_t;
 
 extern uint32_t current_pid;

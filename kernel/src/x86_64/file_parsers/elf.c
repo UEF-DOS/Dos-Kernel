@@ -22,7 +22,7 @@
 #define ET_EXEC 2
 #define PT_LOAD 1
 
-// x86-64 page table flags
+// x86_64 page table flags
 #define PAGE_PRESENT 0x1
 #define PAGE_WRITE   0x2
 #define PAGE_USER    0x4
@@ -62,16 +62,18 @@ typedef struct {
 } elf64_phdr_t;
 
 int parse_elf(const char *filename, void **out_pml4, uint64_t *out_entry) {
-    vfs_node_t *node = vfs_open(filename);
-    if (!node) {
+    vfs_node_t *node = vfs_open(filename); // Open a file and get its node
+    if (!node) { // Check if the node was created
         serial_print("parse_elf: failed to open file\n");
         return -1;
     }
 
+    // Variables
     uint32_t size = 0;
     char *data = vfs_read_file(node, &size);
-    vfs_close(node);
+    vfs_close(node); // We now have the data so we can close the file
 
+    // Perform checks
     if (!data) {
         serial_print("parse_elf: failed to read file\n");
         return -1;
@@ -107,6 +109,7 @@ int parse_elf(const char *filename, void **out_pml4, uint64_t *out_entry) {
         return -1;
     }
 
+    // Create a pml4 to map stuff
     void *pml4 = vmm_create_pml4();
     if (!pml4) {
         serial_print("parse_elf: failed to create PML4\n");
@@ -141,13 +144,16 @@ int parse_elf(const char *filename, void **out_pml4, uint64_t *out_entry) {
             return -1;
         }
 
+        // Page vars
         uint64_t page_base   = phdr.p_vaddr & ~0xFFFULL;
         uint64_t page_offset = phdr.p_vaddr &  0xFFFULL;
         uint64_t pages       = (phdr.p_memsz + page_offset + 0xFFF) / 0x1000;
 
+        // Set flags
         uint64_t flags = PAGE_PRESENT | PAGE_USER;
         if (phdr.p_flags & PF_W) flags |= PAGE_WRITE;
 
+        // Map
         for (uint64_t p = 0; p < pages; p++) {
             void *phys = frame_alloc(1);
             if (!phys) {
@@ -193,6 +199,7 @@ int parse_elf(const char *filename, void **out_pml4, uint64_t *out_entry) {
     serial_print("\n");
 #endif
 
+    // Free the datas memory
     kfree(data);
     *out_pml4  = pml4;
     *out_entry = hdr.e_entry;

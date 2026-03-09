@@ -9,6 +9,7 @@
 #define KBD_ENABLE_SCAN  0xF4
 #define KBD_ACK          0xFA
 
+// Tables for scancodes
 static const char scancode_table[128] = {
     0,   0,  '1','2','3','4','5','6','7','8','9','0','-','=', '\b', '\t',
     'q','w','e','r','t','y','u','i','o','p','[',']','\n', 0,
@@ -27,14 +28,17 @@ static uint8_t shift_held = 0;
 static uint8_t caps_lock  = 0;
 static volatile uint8_t pending_key = 0;
 
+// Wait for the write
 static void wait_kbd_write() {
     while (inb(KBD_STATUS_PORT) & 2);
 }
 
+// Wait for the read
 static void wait_kbd_read() {
     while (!(inb(KBD_STATUS_PORT) & 1));
 }
 
+// Initialize the keyboard
 uint8_t init_keyboard() {
     wait_kbd_write();
     outb(KBD_DATA_PORT, KBD_ENABLE_SCAN);
@@ -46,25 +50,11 @@ uint8_t init_keyboard() {
     return 0;
 }
 
-uint8_t key_press() {
-    if (!(inb(KBD_STATUS_PORT) & 1))
-        return 0;
-
-    uint8_t sc = inb(KBD_DATA_PORT);
-    uint8_t released = sc & 0x80;
-    uint8_t key      = sc & 0x7F;
-
-    if (released)
-        return 0;
-
-    if (key >= 128)
-        return 0;
-
-    char c = scancode_table[key];
-    if (c)
-        serial_putchar(c);
-
-    return (uint8_t)c;
+// Get a keypress
+uint8_t consume_key() {
+    uint8_t k = pending_key;
+    pending_key = 0;
+    return k;
 }
 
 void keyboard_handler() {
@@ -84,10 +74,4 @@ void keyboard_handler() {
         serial_putchar(c);
         pending_key = (uint8_t)c;
     }
-}
-
-uint8_t consume_key() {
-    uint8_t k = pending_key;
-    pending_key = 0;
-    return k;
 }

@@ -1,5 +1,6 @@
 #include <x86_64/process.h>
 #include <x86_64/serial.h>
+#include <x86_64/allocator/pmm.h>
 #include <x86_64/allocator/vmm.h>
 #include <x86_64/drivers/keyboard/ps2_keyboard.h>
 #include <x86_64/apic.h>
@@ -48,10 +49,11 @@ static uint64_t map_fb_into_process() {
     struct limine_framebuffer *fb = framebuffer_request.response->framebuffers[0];
 
     uint64_t hhdm_offset = hhdm_request.response->offset;
-    uint64_t phys = (uint64_t)fb->address - hhdm_offset;
+    uint64_t fb_phys     = (uint64_t)fb->address - hhdm_offset;
 
-    uint64_t size = fb->pitch * fb->height;
-    size = (size + 0xFFF) & ~0xFFFULL;
+    uint64_t fb_size = fb->pitch * fb->height;
+    fb_size = (fb_size + 0xFFF) & ~0xFFFULL;
+    uint64_t fb_pages = fb_size / 0x1000;
 
     process_t *proc = get_process(current_pid);
     if (!proc) {
@@ -59,7 +61,27 @@ static uint64_t map_fb_into_process() {
         return 0;
     }
 
-    vmm_map_range(proc->pml4_phys, FB_USER_VIRT, (void *)phys, size, 0x7);
+    if (!vmm_map_range(proc->pml4_phys, FB_USER_VIRT, (void *)fb_phys, fb_size, 0x7)) {
+        serial_print("map_fb: failed to map real fb\n");
+        return 0;
+    }
+
+    uint64_t bb_virt = FB_USER_VIRT + fb_size;
+
+    for (uint64_t i = 0; i < fb_pages; i++) {
+        void *phys = frame_alloc(1);
+        if (!phys) {
+            vmm_unmap_range(proc->pml4_phys, bb_virt, i * 0x1000);
+            vmm_unmap_range(proc->pml4_phys, FB_USER_VIRT, fb_size);
+            return 0;
+        }
+        if (!map_page(proc->pml4_phys, bb_virt + i * 0x1000, phys, 0x7)) {
+            frame_free(phys, 1);
+            vmm_unmap_range(proc->pml4_phys, bb_virt, i * 0x1000);
+            vmm_unmap_range(proc->pml4_phys, FB_USER_VIRT, fb_size);
+            return 0;
+        }
+    }
 
     return FB_USER_VIRT;
 }

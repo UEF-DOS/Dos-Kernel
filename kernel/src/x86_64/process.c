@@ -165,45 +165,62 @@ void run_process(uint32_t pid) {
     process_t *proc = get_process(pid);
     if (!proc) { serial_print("run_process: invalid pid\n"); return; }
 
-    kernel_pml4_phys = vmm_get_kernel_pml4();
-
-    uint64_t *kpml4 = (uint64_t *)phys_to_virt(kernel_pml4_phys);
-    uint64_t *ppml4 = (uint64_t *)phys_to_virt((uint64_t)proc->pml4_phys);
+    uint64_t kpml4 = vmm_get_kernel_pml4();
+    kernel_pml4_phys = kpml4;
+    uint64_t *kpml4v = (uint64_t *)phys_to_virt(kpml4);
+    uint64_t *ppml4v = (uint64_t *)phys_to_virt((uint64_t)proc->pml4_phys);
     for (int i = 256; i < 512; i++)
-        ppml4[i] = kpml4[i];
+        ppml4v[i] = kpml4v[i];
 
     proc->state = PROCESS_STATE_RUNNING;
+    uint32_t prev_pid = current_pid;
     current_pid = pid;
 
-    serial_print("run_process: launching pid=");
-    serial_print_num(pid);
-    serial_print("\n");
-
     fpu_restore(proc->fpu_state);
-    run_process_switch(&kernel_rsp, (uint64_t)proc->pml4_phys, proc->stack_top, (uint64_t)proc->entry);
+
+    if (prev_pid != 0) {
+        process_t *caller = get_process(prev_pid);
+        fpu_save(caller->fpu_state);
+        run_process_switch(&caller->saved_rsp, (uint64_t)proc->pml4_phys, proc->stack_top, (uint64_t)proc->entry);
+        fpu_restore(proc->fpu_state);
+    } else {
+        run_process_switch(&kernel_rsp, (uint64_t)proc->pml4_phys, proc->stack_top, (uint64_t)proc->entry);
+        __asm__ volatile ("sti");
+        proc->state = PROCESS_STATE_DEAD;
+        current_pid = 0;
+    }
+
     fpu_save(proc->fpu_state);
-
-    __asm__ volatile ("sti");
-
-    proc->state = PROCESS_STATE_DEAD;
-    current_pid = 0;
-    serial_print("run_process: returned\n");
 }
 
 __attribute__((noreturn))
 void process_exit(uint64_t code) {
     process_t *proc = get_process(current_pid);
-
-    if (proc) {
-        fpu_save(proc->fpu_state);
-    }
+    if (proc) fpu_save(proc->fpu_state);
 
     serial_print("process_exit: pid=");
     serial_print_num(current_pid);
     serial_print(" exiting\n");
 
+    process_t *cmd = get_process(1);
+
+    if (cmd && current_pid != 1 && cmd->saved_rsp != 0) {
+        uint64_t ret_pml4 = (uint64_t)cmd->pml4_phys;
+        uint64_t ret_rsp  = cmd->saved_rsp;
+        cmd->saved_rsp    = 0;
+        cmd->state        = PROCESS_STATE_RUNNING;
+
+        if (proc) free_process(proc);
+        current_pid = 1;
+
+        fpu_restore(cmd->fpu_state);
+        process_exit_switch(ret_pml4, ret_rsp);
+    }
+
+    if (proc) free_process(proc);
+    current_pid = 0;
     process_exit_switch(kernel_pml4_phys, kernel_rsp);
-    
+
     __builtin_unreachable();
 }
 

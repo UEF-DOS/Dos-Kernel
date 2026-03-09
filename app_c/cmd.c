@@ -2,9 +2,10 @@
 #include <stdint.h>
 #include <stddef.h>
 
+// Color
 #define COLOR_WHITE 0xAAAAAA
-#define IDLE_THRESHOLD 500000
 
+// Stuff to do for the framebuffer
 static uint32_t *fb;
 static int W, H, PITCH;
 static const int BASE_CHAR_W = 6;
@@ -13,10 +14,12 @@ static int COLS, ROWS;
 
 static int cursor_x = 0;
 static int cursor_y = 0;
+// Create a buffer so we can store text in it
 char command_buffer[256];
 uint8_t buf_pos = 0;
 static int text_scale = 1;
 
+// Characters
 static const uint8_t FONT[][7] = {
     {0x0E,0x11,0x13,0x15,0x19,0x11,0x0E}, {0x04,0x0C,0x04,0x04,0x04,0x04,0x0E}, // 0-1
     {0x0E,0x11,0x01,0x02,0x04,0x08,0x1F}, {0x0E,0x11,0x01,0x06,0x01,0x11,0x0E}, // 2-3
@@ -46,11 +49,13 @@ static const uint8_t FONT[][7] = {
     {0x00,0x00,0x00,0x00,0x00,0x00,0x1F}  // 43: _
 };
 
+// Set a pixel
 static void pset(int x, int y, uint32_t c) {
     if (x < 0 || x >= W || y < 0 || y >= H) return;
     fb[y * PITCH + x] = c;
 }
 
+// Set a pixel but bigger
 static void pset_scaled(int x, int y, uint32_t c) {
     for (int sy = 0; sy < text_scale; sy++) {
         for (int sx = 0; sx < text_scale; sx++) {
@@ -64,12 +69,14 @@ static void update_dimensions() {
     ROWS = H / (BASE_CHAR_H * text_scale);
 }
 
+// Clear the screen
 static void clear_screen() {
     for (int i = 0; i < (PITCH * H); i++) fb[i] = 0;
     cursor_x = 0;
     cursor_y = 0;
 }
 
+// Clear a cell
 static void clear_cell(int col, int row) {
     int px = col * BASE_CHAR_W;
     int py = row * BASE_CHAR_H;
@@ -78,6 +85,7 @@ static void clear_cell(int col, int row) {
     }
 }
 
+// Char stuff
 static int char_idx(char c) {
     if (c >= '0' && c <= '9') return c - '0';
     if (c >= 'A' && c <= 'Z') return 10 + (c - 'A');
@@ -95,6 +103,8 @@ static int char_idx(char c) {
     }
 }
 
+
+// Write a char
 static void put_char(int col, int row, char c, uint32_t color) {
     clear_cell(col, row);
     int idx = char_idx(c);
@@ -109,12 +119,14 @@ static void put_char(int col, int row, char c, uint32_t color) {
     }
 }
 
+// Write a newline
 static void newline() {
     cursor_x = 0;
     cursor_y++;
     if (cursor_y >= ROWS) clear_screen();
 }
 
+// Write a char
 static void terminal_write_char(char c, uint32_t color) {
     if (c == '\n') newline();
     else if (c == '\b') {
@@ -130,10 +142,12 @@ static void terminal_write_char(char c, uint32_t color) {
     }
 }
 
+// Write a string
 static void terminal_write_str(const char *s, uint32_t color) {
     while (*s) terminal_write_char(*s++, color);
 }
 
+// Compare stuff
 static int strnicmp(const char *s1, const char *s2, size_t n) {
     while (n--) {
         char c1 = (*s1 >= 'a' && *s1 <= 'z') ? *s1 - 32 : *s1;
@@ -145,18 +159,23 @@ static int strnicmp(const char *s1, const char *s2, size_t n) {
     return 0;
 }
 
+// Check for valid command with 4 built in commands
 static void check_command() {
     char *input = command_buffer;
     while (*input == ' ') input++;
     if (*input == '\0') return;
 
     if (strnicmp(input, "HELP", 4) == 0) {
-        terminal_write_str("\n  CLS   Clears screen.\n", COLOR_WHITE);
-        terminal_write_str("  SCALE Set scale (1-4).\n", COLOR_WHITE);
-        terminal_write_str("  VER   Show version.\n", COLOR_WHITE);
+        terminal_write_str("\n  CLS      Clears screen.\n", COLOR_WHITE);
+        terminal_write_str("  SCALE    Set scale (1-4).\n", COLOR_WHITE);
+        terminal_write_str("  VER      Show version.\n", COLOR_WHITE);
+        terminal_write_str("  EXEC     Run a program.\n", COLOR_WHITE);
     } 
     else if (strnicmp(input, "CLS", 3) == 0) {
         clear_screen();
+    }
+    else if (strnicmp(input, "VER", 3) == 0) {
+        terminal_write_str("\nUef-Dos v0.1\n", COLOR_WHITE);
     }
     else if (strnicmp(input, "SCALE", 5) == 0) {
         char *arg = input + 5;
@@ -166,41 +185,52 @@ static void check_command() {
             clear_screen();
             update_dimensions();
         } else {
-            terminal_write_str("\nInvalid scale.", COLOR_WHITE);
+            terminal_write_str("\nInvalid scale.\n", COLOR_WHITE);
+        }
+    }
+    else if (strnicmp(input, "EXEC", 4) == 0) {
+        char *arg = input + 4;
+        while (*arg == ' ') arg++;
+        if (*arg == '\0') {
+            terminal_write_str("\nUsage: EXEC /path\n", COLOR_WHITE);
+        } else {
+            terminal_write_str("\nLaunching...\n", COLOR_WHITE);
+            uint64_t result = exec(arg);
+            if (result != 0) {
+                terminal_write_str("Exec failed.\n", COLOR_WHITE);
+            }
+            terminal_write_str("Done.\n", COLOR_WHITE);
         }
     }
     else {
-        terminal_write_str("\nUnknown command.", COLOR_WHITE);
+        terminal_write_str("\nUnknown command.\n", COLOR_WHITE);
     }
 }
 
+// Main
 void main() {
+    // Get dimensions of the framebuffer and pointer
     W = (int)get_fb_width();
     H = (int)get_fb_height();
     PITCH = (int)(get_fb_pitch() / 4);
     fb = (uint32_t*)map_fb();
     
+    // Initialize stuff for the cmd
     update_dimensions();
     clear_screen();
 
+    // Print the beginning text
     terminal_write_str("Uef-Dos https://github.com\n\n", COLOR_WHITE);
     terminal_write_str(">", COLOR_WHITE);
 
-    uint32_t idle_counter = 0;
-
     while (1) {
+        top:
         uint8_t key = consume_key();
-
+        
         if (key == 0) {
-            if (idle_counter < IDLE_THRESHOLD) {
-                idle_counter++;
-            } else {
-                __asm__ volatile ("pause");
-            }
-            continue;
+            __asm__ volatile ("pause");
+            goto top;
         }
-
-        idle_counter = 0;
 
         if (key == '\n') {
             command_buffer[buf_pos] = '\0';
