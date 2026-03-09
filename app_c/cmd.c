@@ -2,8 +2,8 @@
 #include <stdint.h>
 #include <stddef.h>
 
-// Full white is 0xFFFFFF. 0xAAAAAA is grey.
-#define COLOR_WHITE 0xFFFFFF
+#define COLOR_WHITE 0xAAAAAA
+#define IDLE_THRESHOLD 500000
 
 static uint32_t *fb;
 static int W, H, PITCH;
@@ -183,12 +183,24 @@ void main() {
     update_dimensions();
     clear_screen();
 
-    terminal_write_str("Uef-Dos https://github.com/UEF-DOS/Dos-Kernel\n\n", COLOR_WHITE);
+    terminal_write_str("Uef-Dos https://github.com\n\n", COLOR_WHITE);
     terminal_write_str(">", COLOR_WHITE);
+
+    uint32_t idle_counter = 0;
 
     while (1) {
         uint8_t key = consume_key();
-        if (key == 0) continue;
+
+        if (key == 0) {
+            if (idle_counter < IDLE_THRESHOLD) {
+                idle_counter++;
+            } else {
+                __asm__ volatile ("pause");
+            }
+            continue;
+        }
+
+        idle_counter = 0;
 
         if (key == '\n') {
             command_buffer[buf_pos] = '\0';
@@ -198,7 +210,9 @@ void main() {
             buf_pos = 0;
         } 
         else if (key == '\b') {
-            terminal_write_char('\b', 0);
+            if (cursor_x > 1) {
+                terminal_write_char('\b', 0);
+            }
         }
         else if (buf_pos < 250) {
             command_buffer[buf_pos++] = (char)key;
