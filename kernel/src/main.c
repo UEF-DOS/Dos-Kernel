@@ -4,17 +4,6 @@
 #include <limine.h>
 #include <x86_64/gdt.h>
 #include <x86_64/idt.h>
-#include <x86_64/allocator/pmm.h>
-#include <x86_64/allocator/vmm.h>
-#include <x86_64/allocator/heap.h>
-#include <x86_64/apic.h>
-#include <x86_64/serial.h>
-#include <x86_64/drivers/block/ide.h>
-#include <x86_64/drivers/fs/fat12.h>
-#include <x86_64/drivers/fs/vfs.h>
-#include <x86_64/process.h>
-#include <x86_64/file_parsers/elf.h>
-#include <x86_64/fpu.h>
 
 // Set the base revision to 5, this is recommended as this is the latest
 // base revision described by the Limine boot protocol specification.
@@ -33,19 +22,6 @@ volatile struct limine_framebuffer_request framebuffer_request = {
     .id = LIMINE_FRAMEBUFFER_REQUEST_ID,
     .revision = 0
 };
-
-__attribute__((used, section(".limine_requests")))
-volatile struct limine_hhdm_request hhdm_request = {
-    .id = LIMINE_HHDM_REQUEST_ID,
-    .revision = 0
-};
-
-__attribute__((used, section(".limine_requests")))
-volatile struct limine_memmap_request memmap_request = {
-    .id = LIMINE_MEMMAP_REQUEST_ID,
-    .revision = 0
-};
-
 
 // Finally, define the start and end markers for the Limine requests.
 // These can also be moved anywhere, to any .c file, as seen fit.
@@ -67,88 +43,13 @@ static void hcf(void) {
 // If renaming kmain() to something else, make sure to change the
 // linker script accordingly.
 void kmain(void) {
-    serial_init();
     // Ensure the bootloader actually understands our base revision (see spec). 
     if (LIMINE_BASE_REVISION_SUPPORTED(limine_base_revision) == false) {
         hcf();
     }
 
-    // Ensure we got a framebuffer.
-    if (framebuffer_request.response == NULL
-     || framebuffer_request.response->framebuffer_count < 1) {
-        hcf();
-    }
-    
-    if (memmap_request.response == NULL) {
-        hcf();
-    }
-    
-    if (hhdm_request.response == NULL) {
-        hcf();
-    }
-
-    serial_print("Initializing GDT\n");
     gdt_init();
-    
-    serial_print("Initializing PMM\n");
-    frame_allocator_init(memmap_request.response, hhdm_request.response->offset);
-    serial_print("Initializing VMM\n");
-    vmm_init();
-    serial_print("Initializing HEAP\n");
-    heap_init();
-    fpu_init();
-
-    serial_print("Enabling APIC\n");
-    uintptr_t apic_base = cpu_get_apic_base();
-    cpu_set_apic_base(apic_base);
-    apic_map();
-    enable_apic();
-
-    serial_print("Initializing IDT\n");
     idt_init();
-
-#ifdef APIC_TIMER_ENABLED
-    // Calibrate the APIC timer using the configured frequency (defaults to 100Hz).
-    apic_calibrate_timer(APIC_TIMER_FREQUENCY);
-#endif
-
-    serial_print("Initializing IDE\n");
-    ide_initialize(0, 0, 0, 0, 0);
-    serial_print("Initializing FAT12\n");
-    fat12_init(0);
-
-    serial_print("Initializing VFS\n");
-    vfs_init();
-    if (vfs_write_file("/hello.txt", "Hello, world!", 13) == 0) {
-        serial_print("Failed to write file to VFS\n");
-    } else {
-        serial_print("Write OK\n");
-    }
-    vfs_node_t *node = vfs_open("/hello.txt");
-    if (node) {
-        uint32_t size;
-        char *data = vfs_read_file(node, &size);
-        if (data) {
-            serial_print("Read from VFS: ");
-            serial_print(data);
-            serial_print("\n");
-        } else {
-            serial_print("Failed to read file from VFS\n");
-        } 
-        vfs_close(node);
-    } else {
-        serial_print("Failed to open file from VFS\n");
-    }
-
-    serial_print("Creating process\n");
-    void *pml4;
-    uint64_t entry;
-
-    if (parse_elf("/main", &pml4, &entry) == 0) {
-        uint32_t pid = create_process(pml4, (void *)entry);
-        if (pid) run_process(pid);
-    }
-    serial_print("DONE\n");
 
     // We're done, just hang...
     hcf();

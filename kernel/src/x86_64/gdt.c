@@ -1,7 +1,6 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <x86_64/gdt.h>
-#include <x86_64/allocator/heap.h>
 
 struct gdt_entry {
     uint16_t limit_low;
