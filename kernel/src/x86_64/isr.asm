@@ -55,7 +55,7 @@ isr_common:
     push r13
     push r14
     push r15
-    mov rdi, rsp        ; pass frame pointer as first arg
+    mov rdi, rsp 
     call isr_handler
     pop r15
     pop r14
@@ -72,7 +72,7 @@ isr_common:
     pop rcx
     pop rbx
     pop rax
-    add rsp, 16         ; skip vector + error_code
+    add rsp, 16
     iretq
 
 isr_stub 0

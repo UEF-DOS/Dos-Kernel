@@ -15,7 +15,7 @@ uint64_t frame_alloc() {
     uint64_t page = page_list;
 
     if (page == 0) {
-        return NULL;
+        return 0;
     }
 
     uint64_t *next_ptr = (uint64_t *)phys_virt(page);

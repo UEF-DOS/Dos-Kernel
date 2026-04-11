@@ -1,11 +1,12 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <x86_64/idt.h>
+#include <x86_64/pic.h>
+#include <commands.h>
 
 extern uint64_t int128_handler();
 
-#define APIC_TIMER_VECTOR   0x20
-#define PS2_KEYBOARD_VECTOR 0x21
+#define PIT_TIMER_VECTOR 0x20
 
 typedef struct {
     uint16_t isr_low;
@@ -60,6 +61,14 @@ void idt_init() {
         idt_set_descriptor(v, isr_stub_table[v], 0x8E);
         vectors[v] = true;
     }
+
+    pic_init();
+
+    idt_set_descriptor(PIT_TIMER_VECTOR, isr_stub_table[PIT_TIMER_VECTOR], 0x8E);
+    vectors[PIT_TIMER_VECTOR] = true;
+
+    pic_unmask_irq(0);
+
     __asm__ volatile ("lidt %0" :: "m"(idtr));
     __asm__ volatile ("sti");
 }
@@ -81,10 +90,16 @@ static void exception_handler(interrupt_frame_t *f) {
     for (;;) __asm__ volatile ("cli; hlt");
 }
 
+static void timer_handler(interrupt_frame_t *f) {
+    (void)f;
+    outb(0xE9, '.');
+    pic_send_eoi(0);
+}
+
 void isr_handler(interrupt_frame_t *f) {
     switch (f->vector) {
-        case APIC_TIMER_VECTOR:
-
+        case PIT_TIMER_VECTOR:
+            timer_handler(f);
             break;
         default:
             exception_handler(f);
