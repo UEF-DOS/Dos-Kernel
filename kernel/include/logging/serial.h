@@ -1,5 +1,4 @@
 #pragma once
 
 void write_str(const char *s);
-
-void write_fmt(const char *fmt, ...);
+void serial_write_fmt(const char *fmt, ...);

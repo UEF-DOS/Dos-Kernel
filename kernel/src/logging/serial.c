@@ -1,7 +1,7 @@
 #include <commands.h>
-#include <logging/serial.h>
 #include <logging/format.h>
 #include <stdarg.h>
+#include <logging/serial.h>
 
 #define PORT 0xE9
 
@@ -15,7 +15,7 @@ void write_str(const char *s) {
     }
 }
 
-void write_fmt(const char *fmt, ...) {
+void serial_write_fmt(const char *fmt, ...) {
     va_list list;
     va_start(list, fmt);
     format(write_char, fmt, list);
