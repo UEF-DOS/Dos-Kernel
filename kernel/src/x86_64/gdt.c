@@ -1,5 +1,4 @@
 #include <stdint.h>
-#include <stddef.h>
 #include <x86_64/gdt.h>
 
 struct gdt_entry {
@@ -45,9 +44,9 @@ struct tss_entry {
     uint16_t io_map_base;
 } __attribute__((packed));
 
-static struct gdt_entry    gdt_entries[7];
-static struct gdt_ptr      gdt_ptr;
-static struct tss_entry    tss;
+static struct gdt_entry gdt_entries[8];
+static struct gdt_ptr   gdt_ptr;
+static struct tss_entry tss;
 
 #define KERNEL_IST_STACK_SIZE 0x4000
 static uint8_t ist_stack[KERNEL_IST_STACK_SIZE] __attribute__((aligned(16)));
@@ -74,30 +73,28 @@ static void gdt_encode_tss(struct gdt_tss_entry *entry, uint64_t base, uint16_t 
 }
 
 static void gdt_flush() {
-    __asm__ volatile ("lgdt %0" : : "m"(gdt_ptr));
-
+    __asm__ volatile ("lgdt %0" :: "m"(gdt_ptr));
     __asm__ volatile (
-        "mov $0x10, %%ax \n"
-        "mov %%ax, %%ds  \n"
-        "mov %%ax, %%es  \n"
-        "mov %%ax, %%fs  \n"
-        "mov %%ax, %%gs  \n"
-        "mov %%ax, %%ss  \n"
-        : : : "ax"
+        "mov $0x10, %%ax\n"
+        "mov %%ax, %%ds\n"
+        "mov %%ax, %%es\n"
+        "mov %%ax, %%fs\n"
+        "mov %%ax, %%gs\n"
+        "mov %%ax, %%ss\n"
+        ::: "ax"
     );
-
     __asm__ volatile (
-        "pushq $0x08          \n"
-        "lea 1f(%%rip), %%rax \n"
-        "pushq %%rax          \n"
-        "lretq                \n"
-        "1:                   \n"
-        : : : "rax", "memory"
+        "pushq $0x08\n"
+        "lea 1f(%%rip), %%rax\n"
+        "pushq %%rax\n"
+        "lretq\n"
+        "1:\n"
+        ::: "rax", "memory"
     );
 }
 
 static void tss_flush() {
-    __asm__ volatile ("ltr %0" : : "r"((uint16_t)0x28));
+    __asm__ volatile ("ltr %0" :: "r"((uint16_t)0x28));
 }
 
 void tss_set_kernel_stack(uint64_t rsp0) {
@@ -109,14 +106,14 @@ void gdt_init() {
     tss.ist1        = (uint64_t)ist_stack + KERNEL_IST_STACK_SIZE;
     tss.io_map_base = sizeof(struct tss_entry);
 
-    gdt_ptr.limit = (sizeof(struct gdt_entry) * 7) - 1;
+    gdt_ptr.limit = (sizeof(struct gdt_entry) * 8) - 1;
     gdt_ptr.base  = (uint64_t)&gdt_entries;
 
-    gdt_encode_entry(&gdt_entries[0], 0, 0,       0x00, 0x00); // null
-    gdt_encode_entry(&gdt_entries[1], 0, 0xFFFFF, 0x9A, 0xA0); // kernel code  (0x08)
-    gdt_encode_entry(&gdt_entries[2], 0, 0xFFFFF, 0x92, 0xC0); // kernel data  (0x10)
-    gdt_encode_entry(&gdt_entries[3], 0, 0xFFFFF, 0xFA, 0xA0); // user code    (0x18)
-    gdt_encode_entry(&gdt_entries[4], 0, 0xFFFFF, 0xF2, 0xC0); // user data    (0x20)
+    gdt_encode_entry(&gdt_entries[0], 0, 0,       0x00, 0x00);
+    gdt_encode_entry(&gdt_entries[1], 0, 0xFFFFF, 0x9A, 0xA0);
+    gdt_encode_entry(&gdt_entries[2], 0, 0xFFFFF, 0x92, 0xC0);
+    gdt_encode_entry(&gdt_entries[3], 0, 0xFFFFF, 0xFA, 0xA0);
+    gdt_encode_entry(&gdt_entries[4], 0, 0xFFFFF, 0xF2, 0xC0);
     gdt_encode_tss((struct gdt_tss_entry *)&gdt_entries[5], (uint64_t)&tss, sizeof(tss) - 1);
 
     gdt_flush();

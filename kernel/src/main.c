@@ -1,11 +1,11 @@
-#include "commands.h"
-#include "x86_64/interrupts/pit.h"
 #include <stdint.h>
 #include <stdbool.h>
 #include <limine.h>
 #include <x86_64/gdt.h>
 #include <x86_64/idt.h>
 #include <x86_64/interrupts/pit.h>
+#include <allocators/frame.h>
+#include <allocators/hhdm.h>
 #include <allocators/paging.h>
 
 // Set the base revision to 5, this is recommended as this is the latest
@@ -39,6 +39,7 @@ static volatile uint64_t limine_requests_end_marker[] = LIMINE_REQUESTS_END_MARK
 // If renaming kmain() to something else, make sure to change the
 // linker script accordingly.
 void kmain(void) {
+    __asm__ volatile ("cli");
     // Ensure the bootloader actually understands our base revision (see spec). 
     if (LIMINE_BASE_REVISION_SUPPORTED(limine_base_revision) == false) {
         for (;;) {
@@ -49,7 +50,9 @@ void kmain(void) {
     gdt_init();
     idt_init();
     pit_init(100);
-    init_paging();
+    hhdm_init();
+    frame_init();
+    paging_init();
 
     // We're done, just hang...
     for (;;) {
