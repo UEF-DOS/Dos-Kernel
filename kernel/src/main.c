@@ -4,9 +4,9 @@
 #include <x86_64/gdt.h>
 #include <x86_64/idt.h>
 #include <x86_64/interrupts/pit.h>
-#include <allocators/frame.h>
-#include <allocators/hhdm.h>
-#include <allocators/paging.h>
+#include <memory/frame.h>
+#include <memory/hhdm.h>
+#include <memory/paging.h>
 
 // Set the base revision to 5, this is recommended as this is the latest
 // base revision described by the Limine boot protocol specification.

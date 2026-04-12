@@ -45,7 +45,7 @@
     "output": "obj-x86_64/cc-runtime/src/cc-runtime.c.o"
   },
   {
-    "file": "src/allocators/frame.c",
+    "file": "src/memory/frame.c",
     "arguments": [
       "/usr/bin/cc",
       "-g",
@@ -82,15 +82,15 @@
       "-MMD",
       "-MP",
       "-c",
-      "src/allocators/frame.c",
+      "src/memory/frame.c",
       "-o",
-      "obj-x86_64/src/allocators/frame.c.o"
+      "obj-x86_64/src/memory/frame.c.o"
     ],
     "directory": "/home/gavin/repos/Dos-Kernel/kernel",
-    "output": "obj-x86_64/src/allocators/frame.c.o"
+    "output": "obj-x86_64/src/memory/frame.c.o"
   },
   {
-    "file": "src/allocators/hhdm.c",
+    "file": "src/memory/hhdm.c",
     "arguments": [
       "/usr/bin/cc",
       "-g",
@@ -127,15 +127,15 @@
       "-MMD",
       "-MP",
       "-c",
-      "src/allocators/hhdm.c",
+      "src/memory/hhdm.c",
       "-o",
-      "obj-x86_64/src/allocators/hhdm.c.o"
+      "obj-x86_64/src/memory/hhdm.c.o"
     ],
     "directory": "/home/gavin/repos/Dos-Kernel/kernel",
-    "output": "obj-x86_64/src/allocators/hhdm.c.o"
+    "output": "obj-x86_64/src/memory/hhdm.c.o"
   },
   {
-    "file": "src/allocators/paging.c",
+    "file": "src/memory/paging.c",
     "arguments": [
       "/usr/bin/cc",
       "-g",
@@ -172,12 +172,12 @@
       "-MMD",
       "-MP",
       "-c",
-      "src/allocators/paging.c",
+      "src/memory/paging.c",
       "-o",
-      "obj-x86_64/src/allocators/paging.c.o"
+      "obj-x86_64/src/memory/paging.c.o"
     ],
     "directory": "/home/gavin/repos/Dos-Kernel/kernel",
-    "output": "obj-x86_64/src/allocators/paging.c.o"
+    "output": "obj-x86_64/src/memory/paging.c.o"
   },
   {
     "file": "src/main.c",
