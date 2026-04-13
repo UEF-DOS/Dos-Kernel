@@ -4,5 +4,5 @@
 /freestnd-c-hdrs
 /cc-runtime
 /limine-protocol
-/bin
-/obj
+/bin-*
+/obj-*
