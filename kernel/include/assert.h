@@ -9,17 +9,16 @@
 #  define unlikely(x) __builtin_expect(!!(x), 0)
 #endif
 
-__attribute__((noreturn)) void kernel_panic(const char *fmt, ...);
+__attribute__((noreturn)) void panic(const char *fmt, ...);
 
 #ifndef NDEBUG
 #  define ASSERT(expr)                                                        \
     do {                                                                      \
         if (unlikely(!(expr))) {                                              \
-            kernel_panic("Assertion failed: (%s)\n"                           \
-                         "  file : %s\n"                                      \
-                         "  line : %d\n"                                      \
-                         "  func : %s\n",                                     \
-                         #expr, __FILE__, __LINE__, __func__);                \
+            panic("Assertion failed: (%s)\n"                                  \
+                  "  file : %s:%d\n"                                          \
+                  "  func : %s\n",                                            \
+                  #expr, __FILE__, __LINE__, __func__);                       \
         }                                                                     \
     } while (0)
 #else
@@ -30,9 +29,8 @@ __attribute__((noreturn)) void kernel_panic(const char *fmt, ...);
 #  define ASSERT_MSG(expr, msg)                                               \
     do {                                                                      \
         if (unlikely(!(expr))) {                                              \
-            kernel_panic("Assertion failed: (%s) — %s\n"                     \
-                         "  file : %s\n"                                      \
-                         "  line : %d\n"                                      \
+            panic("Assertion failed: (%s) — %s\n"                             \
+                         "  file : %s:%d\n"                                   \
                          "  func : %s\n",                                     \
                          #expr, (msg), __FILE__, __LINE__, __func__);         \
         }                                                                     \
@@ -42,11 +40,10 @@ __attribute__((noreturn)) void kernel_panic(const char *fmt, ...);
 #endif
 
 #define PANIC(msg)                                                            \
-    kernel_panic("Panic: %s\n"                                                \
-                 "  file : %s\n"                                              \
-                 "  line : %d\n"                                              \
-                 "  func : %s\n",                                             \
-                 (msg), __FILE__, __LINE__, __func__)
+    panic("Panic: %s\n"                                                       \
+          "  file : %s:%d\n"                                                  \
+          "  func : %s\n",                                                    \
+          (msg), __FILE__, __LINE__, __func__)
 
 #ifndef NDEBUG
 #  define UNREACHABLE()  PANIC("Reached unreachable code")

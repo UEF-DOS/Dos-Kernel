@@ -1,11 +1,11 @@
-#include "x86_64/interrupts/pit.h"
 #include <stdint.h>
 #include <stdbool.h>
-#include <x86_64/idt.h>
 #include <x86_64/pic.h>
 #include <commands.h>
+#include <x86_64/idt.h>
+#include <x86_64/apic.h>
 
-#define PIT_TIMER_VECTOR 0x20
+#define APIC_TIMER_VECTOR 0x20
 
 typedef struct {
     uint16_t isr_low;
@@ -51,16 +51,14 @@ void idt_set_descriptor(uint8_t vector, void *isr, uint8_t flags) {
     d->reserved    = 0;
 }
 
-void idt_init() {
+void idt_init(void) {
     idtr.base  = (uintptr_t)&idt[0];
     idtr.limit = sizeof(idt_entry_t) * 256 - 1;
 
-    for (uint16_t v = 0; v < 256; v++) {
+    for (uint16_t v = 0; v < 256; v++)
         idt_set_descriptor((uint8_t)v, isr_stub_table[v], 0x8E);
-    }
 
     pic_disable();
-
     __asm__ volatile ("lidt %0" :: "m"(idtr));
     __asm__ volatile ("sti");
 }
@@ -74,20 +72,15 @@ static void exception_handler(interrupt_frame_t *f) {
     for (;;) __asm__ volatile ("cli; hlt");
 }
 
-static void timer_handler(interrupt_frame_t *f) {
+static void apic_timer_handler(interrupt_frame_t *f) {
     (void)f;
-    pit_tick();
     outb(0xE9, '.');
-    pic_send_eoi(0);
+    apic_eoi();
 }
 
 void isr_handler(interrupt_frame_t *f) {
     switch (f->vector) {
-        case PIT_TIMER_VECTOR:
-            timer_handler(f);
-            break;
-        default:
-            exception_handler(f);
-            break;
+        case APIC_TIMER_VECTOR:  apic_timer_handler(f);  break;
+        default:                 exception_handler(f);   break;
     }
 }

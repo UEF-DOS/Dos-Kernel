@@ -7,20 +7,6 @@
 #include <memory/paging.h>
 #include <memory/vm.h>
 
-struct vm_region {
-    uint64_t base;
-    size_t size;
-    struct vm_region *next;
-};
-
-struct vm_space {
-    uint64_t *pml4;
-    uint64_t heap_base;
-    uint64_t heap_end;
-    uint64_t next_free;
-    struct vm_region *regions;
-};
-
 struct vm_space *vm_space_create(uint64_t heap_base, size_t heap_size) {
     uint64_t phys = frame_alloc();
     struct vm_space *space = (struct vm_space *)(offset + phys);
@@ -133,6 +119,28 @@ uint64_t vm_map_at(struct vm_space *space, uint64_t vaddr, uint64_t paddr, size_
 
     struct vm_region *r = region_alloc(vaddr, size);
     region_insert(space, r);
+
+    return vaddr;
+}
+
+uint64_t vm_map_region(struct vm_space *space, struct vm_region *region, uint64_t flags) {
+    ASSERT_NOT_NULL(space);
+    ASSERT_NOT_NULL(region);
+    ASSERT(region->base % 0x1000 == 0);
+    ASSERT(region->size > 0);
+
+    size_t size = (region->size + 0xFFF) & ~(size_t)0xFFF;
+
+    ASSERT(space->next_free + size <= space->heap_end);
+
+    uint64_t vaddr = space->next_free;
+
+    paging_map_page(space->pml4, vaddr, region->base, size, flags);
+
+    region->size = size;
+    region_insert(space, region);
+
+    space->next_free += size;
 
     return vaddr;
 }

@@ -1,14 +1,15 @@
-
+#include "assert.h"
+#include "panic.h"
 #include <stdint.h>
 #include <stdbool.h>
 #include <limine.h>
 #include <x86_64/gdt.h>
 #include <x86_64/idt.h>
-#include <x86_64/interrupts/pit.h>
 #include <memory/frame.h>
 #include <memory/hhdm.h>
 #include <memory/paging.h>
 #include <logging/printk.h>
+#include <x86_64/apic.h>
 
 __attribute__((used, section(".limine_requests")))
 static volatile uint64_t limine_base_revision[] = LIMINE_BASE_REVISION(5);
@@ -25,7 +26,7 @@ void kmain(void) {
     printk_init();
 
     if (LIMINE_BASE_REVISION_SUPPORTED(limine_base_revision) == false) {
-        log_fatal("Bootloader does not support base revision 5\n");
+        log_fatal("Bootloader does not support base revision: %lu\n", limine_base_revision[0]);
         for (;;) asm ("hlt");
     }
 
@@ -37,9 +38,6 @@ void kmain(void) {
     idt_init();
     log_info("IDT initialized\n");
 
-    pit_init(100);
-    log_info("PIT initialized at 100 Hz\n");
-
     hhdm_init();
     log_info("HHDM initialized\n");
 
@@ -49,7 +47,12 @@ void kmain(void) {
     paging_init();
     log_info("Paging initialized\n");
 
-    log_debug("Kernel init complete, halting\n");
+    enable_apic(true);
+    log_info("APIC enabled\n");
 
+    apic_timer_init(1000);
+    log_info("APIC timer initialized at 1000 Hz\n");
+
+    log_debug("Kernel init complete, halting\n");
     for (;;) asm ("hlt");
 }

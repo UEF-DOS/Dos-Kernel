@@ -87,6 +87,46 @@ void printk_level(int level, const char *fmt, ...) {
     print_char('\n');
 }
 
+void vprintk(const char *fmt, va_list ap) {
+    print_char('\r');
+    format(print_char, fmt, ap);
+}
+
+static char fmt_buf[1024];
+static size_t fmt_buf_pos;
+
+static void buf_write_char(char c) {
+    if (fmt_buf_pos < sizeof(fmt_buf) - 1)
+        fmt_buf[fmt_buf_pos++] = c;
+}
+
+void vprintk_level(int level, const char *fmt, va_list ap) {
+    if (level < LOG_LEVEL) return;
+    if (level < LOG_DEBUG || level > LOG_FATAL) level = LOG_DEBUG;
+
+    fmt_buf_pos = 0;
+    format(buf_write_char, fmt, ap);
+    fmt_buf[fmt_buf_pos] = '\0';
+
+    print_char('\r');
+    print_str(level_color[level]);
+    print_str(level_prefix[level]);
+    print_str(ANSI_RESET);
+
+    for (size_t i = 0; i < fmt_buf_pos; i++) {
+        if (fmt_buf[i] == '\n' && fmt_buf[i + 1] != '\0') {
+            print_char('\n');
+            print_char('\r');
+            print_str(level_color[level]);
+            print_str(level_prefix[level]);
+            print_str(ANSI_RESET);
+        } else {
+            print_char(fmt_buf[i]);
+        }
+    }
+    print_char('\n');
+}
+
 #define log_debug(fmt, ...) printk_level(LOG_DEBUG, fmt, ##__VA_ARGS__)
 #define log_info(fmt, ...)  printk_level(LOG_INFO,  fmt, ##__VA_ARGS__)
 #define log_warn(fmt, ...)  printk_level(LOG_WARN,  fmt, ##__VA_ARGS__)
