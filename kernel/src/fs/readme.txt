@@ -1,0 +1,2 @@
+So my idea for the VFS is that we first scan the disks to detect the FS it's using and then assign drive letter (E.g. A, B, C, etc)
+and then if we detect a FS we don't use or have we will give it to the user but it will be marked as unknown

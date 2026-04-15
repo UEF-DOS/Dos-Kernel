@@ -1,8 +1,7 @@
-#include "assert.h"
-#include "panic.h"
 #include <stdint.h>
 #include <stdbool.h>
 #include <limine.h>
+#include <memory.h>
 #include <x86_64/gdt.h>
 #include <x86_64/idt.h>
 #include <memory/frame.h>
@@ -10,6 +9,8 @@
 #include <memory/paging.h>
 #include <logging/printk.h>
 #include <x86_64/apic.h>
+#include <fs/fat16.h>
+#include <storage/ahci.h>
 
 __attribute__((used, section(".limine_requests")))
 static volatile uint64_t limine_base_revision[] = LIMINE_BASE_REVISION(5);
@@ -52,6 +53,12 @@ void kmain(void) {
 
     apic_timer_init(1000);
     log_info("APIC timer initialized at 1000 Hz\n");
+
+    ahci_init();
+    log_info("AHCI initialized\n");
+
+    fat16_init(AHCI, 0, 0);\
+    log_info("FAT16 initialized\n");
 
     log_debug("Kernel init complete, halting\n");
     for (;;) asm ("hlt");

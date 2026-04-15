@@ -90,7 +90,7 @@ uint64_t paging_get_entry(uint64_t *pml4, uint64_t vaddr) {
     return __atomic_load_n(&current_table[VADDR_TO_INDEX(vaddr, 1)], __ATOMIC_SEQ_CST);
 }
 
-uint64_t *paging_create_pml4(void) {
+uint64_t *paging_create_pml4() {
     uint64_t phys = frame_alloc();
     uint64_t *pml4 = (uint64_t *)(offset + phys);
     memset(pml4, 0, 0x1000);
@@ -101,7 +101,13 @@ uint64_t *paging_create_pml4(void) {
     return pml4;
 }
 
-void paging_init(void) {
+uint64_t *paging_get_current_pml4() {
+    uint64_t cr3;
+    __asm__ volatile ("mov %%cr3, %0" : "=r"(cr3));
+    return (uint64_t *)(offset + (cr3 & ENTRY_4K_ADDRESS_MASK));
+}
+
+void paging_init() {
     uint64_t hhdm = 0xFFFF800000000000;
 
     uint64_t cr3;

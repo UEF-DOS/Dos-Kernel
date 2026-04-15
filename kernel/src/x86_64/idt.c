@@ -1,9 +1,12 @@
+
 #include <stdint.h>
 #include <stdbool.h>
 #include <x86_64/pic.h>
 #include <commands.h>
-#include <x86_64/idt.h>
 #include <x86_64/apic.h>
+#include <logging/serial.h>
+#include <panic.h>
+#include <x86_64/idt.h>
 
 #define APIC_TIMER_VECTOR 0x20
 
@@ -68,13 +71,20 @@ static void exception_handler(interrupt_frame_t *f) {
     uint64_t cr2 = 0, cr3 = 0;
     __asm__ volatile ("mov %%cr2, %0" : "=r"(cr2));
     __asm__ volatile ("mov %%cr3, %0" : "=r"(cr3));
-    (void)f; (void)cr2; (void)cr3;
-    for (;;) __asm__ volatile ("cli; hlt");
+    panic("Exception %u, error %u, RIP=%#018llx, CR2=%#018llx, CR3=%#018llx",
+          (unsigned)f->vector,
+          (unsigned)f->error_code,
+          (unsigned long long)f->rip,
+          (unsigned long long)cr2,
+          (unsigned long long)cr3);
+    for (;;) {
+        __asm__ volatile ("cli\nhlt");
+    }
 }
 
 static void apic_timer_handler(interrupt_frame_t *f) {
     (void)f;
-    outb(0xE9, '.');
+    serial_write_fmt(".");
     apic_eoi();
 }
 
